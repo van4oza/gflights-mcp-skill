@@ -29,13 +29,17 @@ How someone would use the MCP tools without the skill:
 How the skill instructs searches:
 - Multiple origin and destination airports in parallel
 - `search_dates` first (with `sort_by_price: true`) to find cheapest date window
-- `search_flights` on the best 1-2 dates with `checked_bags` or `carry_on` set
+- `search_flights` on the best 1-2 dates with smart defaults applied:
+  - `carry_on: true` (always — normalizes pricing, filters basic economy on US domestic)
+  - `checked_bags: 1` (when scenario involves checked luggage)
+  - `exclude_basic_economy: true` (for non-budget scenarios)
 - Both CHEAPEST and BEST sorts
 
 Then compare:
 - **Price**: cheapest found (baseline vs skill-guided, bag-inclusive)
 - **Airport**: did an alternate airport win?
 - **Date**: did an alternate date win?
+- **Smart defaults impact**: did carry_on/exclude_basic_economy change the price picture?
 - **Options**: how many more options did the skill surface?
 
 ## Test Scenarios
@@ -53,9 +57,9 @@ Run all 3 scenarios. Use dates approximately 6-8 weeks from today to ensure avai
 **Skill-guided:**
 - `search_dates`: Run in parallel for all pairs: JFK→LHR, JFK→LGW, EWR→LHR, EWR→LGW, LGA→LHR, LGA→LGW. Use the full target month as date range, sort_by_price=true.
 - Find the cheapest date across all pairs.
-- `search_flights`: On the best date, search the top 2-3 airport pairs. Use checked_bags=1, sort_by=CHEAPEST. Also run sort_by=BEST on the winning pair.
+- `search_flights`: On the best date, search the top 2-3 airport pairs. Use carry_on=true, checked_bags=1, exclude_basic_economy=true, sort_by=CHEAPEST. Also run sort_by=BEST on the winning pair.
 
-**Compare:** Price with bags, which airport pair won, which date won.
+**Compare:** Price with bags, which airport pair won, which date won, did excluding basic economy change the cheapest option.
 
 ---
 
@@ -67,9 +71,9 @@ Run all 3 scenarios. Use dates approximately 6-8 weeks from today to ensure avai
 **Skill-guided:**
 - `search_dates`: Run in parallel for: LAX→NRT, LAX→HND, BUR→NRT, BUR→HND, SNA→NRT, SNA→HND. Full target month, sort_by_price=true.
 - Find cheapest date across all pairs.
-- `search_flights`: On best date, search top pairs. Use checked_bags=1.
+- `search_flights`: On best date, search top pairs. Use carry_on=true, checked_bags=1, exclude_basic_economy=true.
 
-**Compare:** Price, airport pair, date.
+**Compare:** Price, airport pair, date, smart defaults impact.
 
 ---
 
@@ -81,9 +85,9 @@ Run all 3 scenarios. Use dates approximately 6-8 weeks from today to ensure avai
 **Skill-guided:**
 - `search_dates`: Run in parallel for: ORD→CDG, ORD→ORY, MDW→CDG, MDW→ORY. Full target month, is_round_trip=true, trip_duration=7, sort_by_price=true.
 - Find cheapest date across all pairs.
-- `search_flights`: On best date, search top pairs with return_date set, checked_bags=1.
+- `search_flights`: On best date, search top pairs with return_date set, carry_on=true, checked_bags=1, exclude_basic_economy=true.
 
-**Compare:** Price, airport pair, date.
+**Compare:** Price, airport pair, date, smart defaults impact.
 
 ---
 
@@ -114,7 +118,7 @@ SKILL-GUIDED (multi-airport + date flex + bags):
   Pairs searched: [list all pairs checked]
   Dates scanned: [date range]
 
-DELTA: Skill saved $XX (XX%) | Alternate airport: [yes/no] | Alternate date: [yes/no]
+DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no]
 ```
 
 After all scenarios, output the summary:

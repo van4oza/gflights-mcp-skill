@@ -90,6 +90,7 @@ Apply changes to both files:
 - Update airport lists if new major airports or city codes are relevant
 - Update search parameter references if the MCP tools have changed
 - Update advice logic if playbook findings change best practices
+- Update smart defaults (carry_on, exclude_basic_economy, departure_window, emissions) if playbook findings change recommendations
 - Add new strategies discovered during research
 
 **Test skill (`.claude/skills/test-flights/SKILL.md`):**
@@ -97,6 +98,7 @@ Apply changes to both files:
 - If new search strategies were added, add a matching A/B test scenario that validates the strategy
 - If MCP tool parameters changed, update both baseline and skill-guided search specs
 - If bag fee estimates changed, update the baseline bag-fee assumption ($70 default)
+- If smart default recommendations changed (carry_on, exclude_basic_economy, emissions), update the skill-guided search specs to match
 - Keep the test scenarios realistic — use routes where the multi-airport strategy is likely to show value
 
 ## Source Requirements (minimums from the research prompt)

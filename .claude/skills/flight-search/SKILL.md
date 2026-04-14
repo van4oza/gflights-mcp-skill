@@ -73,16 +73,29 @@ When the user has flexible dates:
 
 When dates are fixed, skip straight to `search_flights`.
 
-### 4. Compare and Normalize Results
+### 4. Apply Smart Defaults
+
+Before running `search_flights`, apply these defaults to every search — they reflect how experienced travelers actually compare fares:
+
+- **Always set `carry_on: true`** — almost everyone brings a carry-on. This normalizes pricing by including overhead-bin fees, and on US domestic routes it effectively filters out many basic economy fares (which restrict carry-on bags). This is one of the most underused Google Flights features.
+- **Set `checked_bags: 1`** if the user mentions luggage, checked bags, or is booking a trip longer than a few days. For short weekend trips, leave it at 0 unless asked.
+- **Use `exclude_basic_economy: true`** when the user is not explicitly budget-hunting — basic economy fares lack seat selection, changes, and often overhead bin access. Only include them when the user specifically wants the absolute cheapest option or says they travel light.
+- **Use `departure_window`** when the user mentions time preferences — e.g., "no red-eyes" → `"6-20"`, "morning flights" → `"6-12"`, "afternoon" → `"12-18"`.
+- **Use `emissions: "LESS"`** when the user mentions sustainability, environment, carbon footprint, or eco-friendly travel. Otherwise default to `"ALL"`.
+
+These smart defaults mean the results the user sees reflect **real trip cost**, not misleading headline fares.
+
+### 5. Compare and Normalize Results
 
 When presenting results, always help the user understand the **true cost**:
 
-- If the user needs bags, use the `carry_on: true` and/or `checked_bags: 1` or `2` parameters to get bag-inclusive pricing.
-- Flag any results that are suspiciously cheap - they may be basic economy with no bags, self-transfer itineraries, or OTA-only options.
+- Flag any results that are suspiciously cheap — they may be basic economy with no bags, self-transfer itineraries, or OTA-only options.
 - Sort by `CHEAPEST` first, but also run a `BEST` or `TOP_FLIGHTS` sort to show the quality-price tradeoff.
+- For time-sensitive or business travelers, also run `sort_by: DURATION` to surface the fastest options even if they cost more.
+- For eco-conscious users, run `sort_by: EMISSIONS` to surface lower-carbon options.
 - Point out when the price gap between "best" and "cheapest" is small (user should pick the cleaner itinerary).
 
-### 5. Present Results Clearly
+### 6. Present Results Clearly
 
 Format your findings as a clear comparison. For each recommended option include:
 - Price (and whether it includes bags)
@@ -92,7 +105,7 @@ Format your findings as a clear comparison. For each recommended option include:
 - Layover details (duration, airport)
 - Any warnings (self-transfer, overnight layover, airport change, long layover)
 
-### 6. Give Playbook-Informed Advice
+### 7. Give Playbook-Informed Advice
 
 Based on the results, proactively advise the user:
 
