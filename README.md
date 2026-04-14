@@ -132,6 +132,20 @@ If you use **Claude Desktop**, add to `~/Library/Application Support/Claude/clau
 }
 ```
 
+### 4. Install skills for Claude Desktop / Dispatch / Chat (optional)
+
+Skills in `.claude/skills/` only work in Claude Code's terminal mode. To use them in **Claude Desktop chat** or **Dispatch mode**, upload the `.skill` packages:
+
+```bash
+./install.sh  # builds .skill files in dist/
+```
+
+Then in Claude Desktop:
+1. Open **Customize > Skills**
+2. Upload `dist/flights.skill`, `dist/test-flights.skill`, and `dist/update-playbook.skill`
+
+Note: `/flights` and `/test-flights` require the fli MCP server to be configured in Claude Desktop too (see step 3 above).
+
 ## Usage
 
 Once installed, start Claude Code and type:

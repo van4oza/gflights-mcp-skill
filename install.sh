@@ -3,6 +3,7 @@ set -e
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 USER_SKILLS_DIR="$HOME/.claude/skills"
+DIST_DIR="$REPO_DIR/dist"
 SKILLS=("flights" "update-playbook" "test-flights")
 
 echo "=== Google Flights Skills Installer ==="
@@ -25,7 +26,9 @@ else
     echo "[ok] fli-mcp installed"
 fi
 
-# 2. Symlink skills to user-level
+# 2. Symlink skills to user-level (for Claude Code)
+echo ""
+echo "--- Claude Code skills ---"
 mkdir -p "$USER_SKILLS_DIR"
 
 for SKILL_NAME in "${SKILLS[@]}"; do
@@ -41,12 +44,31 @@ for SKILL_NAME in "${SKILLS[@]}"; do
     fi
 done
 
-# 3. Check MCP config
+# 3. Build .skill packages (for Claude Desktop / Dispatch / Chat)
+echo ""
+echo "--- Claude Desktop / Dispatch / Chat skills ---"
+mkdir -p "$DIST_DIR"
+
+for SKILL_NAME in "${SKILLS[@]}"; do
+    (cd "$REPO_DIR/.claude/skills/$SKILL_NAME" && zip -j "$DIST_DIR/$SKILL_NAME.skill" SKILL.md) > /dev/null 2>&1
+    echo "[ok] $SKILL_NAME.skill — built in dist/"
+done
+
+echo ""
+echo "  To use skills in Claude Desktop chat / Dispatch mode:"
+echo "  1. Open Claude Desktop → Customize → Skills"
+echo "  2. Upload .skill files from: $DIST_DIR/"
+echo "     - flights.skill"
+echo "     - test-flights.skill"
+echo "     - update-playbook.skill"
+
+# 4. Check MCP config
+echo ""
+echo "--- MCP server config ---"
 CLAUDE_JSON="$HOME/.claude.json"
 if [ -f "$CLAUDE_JSON" ] && grep -q "fli-mcp" "$CLAUDE_JSON" 2>/dev/null; then
     echo "[ok] fli-mcp already configured in ~/.claude.json"
 else
-    echo ""
     echo "[!!] To make the MCP server available globally, add this to $CLAUDE_JSON:"
     echo ""
     echo '  {'
@@ -64,7 +86,6 @@ fi
 
 echo ""
 echo "=== Done! ==="
-echo "Start Claude Code and use:"
-echo "  /flights          — search for flights"
-echo "  /update-playbook  — research and update the playbook"
-echo "  /test-flights     — A/B test the skill's value"
+echo ""
+echo "Claude Code (terminal):          /flights  /test-flights  /update-playbook"
+echo "Claude Desktop (chat/dispatch):  Upload .skill files from dist/"
