@@ -1,8 +1,10 @@
-# /flights - Google Flights Skill for Claude Code
+# Google Flights Skills for Claude Code
 
-A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that turns Claude into an expert flight search assistant. It uses the [fli](https://github.com/punitarani/fli) MCP server for Google Flights data and applies proven search strategies from a curated best-practices playbook.
+A pair of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills for flight search and playbook maintenance. Uses the [fli](https://github.com/punitarani/fli) MCP server for Google Flights data and applies proven search strategies from a curated best-practices playbook.
 
-## What it does
+## Skills
+
+### `/flights` — Search for flights
 
 Type `/flights` in Claude Code and describe your trip. The skill will:
 
@@ -22,6 +24,18 @@ flexible on dates. Economy, 1 checked bag. Budget around $800.
 ```
 
 Claude will search SFO/OAK/SJC to NRT/HND across June, find the cheapest date windows, pull detailed flight options, and present a comparison table with actionable advice.
+
+### `/update-playbook` — Research and update the playbook
+
+Type `/update-playbook` to kick off a web research session that:
+
+- **Audits every claim** in the current playbook against fresh sources
+- **Searches official Google docs**, travel publishers, and traveler forums
+- **Resolves contradictions** with a disagreement ledger
+- **Presents findings** for your approval before changing anything
+- **Updates both** the playbook and the `/flights` skill with current best practices
+
+This follows a rigorous research methodology defined in `google-flights-deep-research-prompt.md`, requiring 8+ official sources, 6+ publisher sources, and 10+ community threads before any update is applied.
 
 ## Requirements
 
@@ -133,10 +147,13 @@ The skill combines two things:
 ├── install.sh                             # One-command installer
 ├── .mcp.json                              # MCP server config (project-level)
 ├── google-flights-playbook-2026.md        # Best practices reference
+├── google-flights-deep-research-prompt.md # Research methodology for updates
 └── .claude/
     └── skills/
-        └── flight-search/
-            └── SKILL.md                   # The skill definition
+        ├── flight-search/
+        │   └── SKILL.md                   # /flights skill
+        └── update-playbook/
+            └── SKILL.md                   # /update-playbook skill
 ```
 
 ## Key search strategies (from the playbook)

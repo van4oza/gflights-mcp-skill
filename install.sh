@@ -1,11 +1,11 @@
 #!/bin/bash
 set -e
 
-SKILL_NAME="flight-search"
-SKILL_DIR="$(cd "$(dirname "$0")" && pwd)/.claude/skills/$SKILL_NAME"
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 USER_SKILLS_DIR="$HOME/.claude/skills"
+SKILLS=("flight-search" "update-playbook")
 
-echo "=== Google Flights Skill Installer ==="
+echo "=== Google Flights Skills Installer ==="
 echo ""
 
 # 1. Install the fli MCP server
@@ -25,18 +25,21 @@ else
     echo "[ok] fli-mcp installed"
 fi
 
-# 2. Symlink skill to user-level
+# 2. Symlink skills to user-level
 mkdir -p "$USER_SKILLS_DIR"
 
-if [ -L "$USER_SKILLS_DIR/$SKILL_NAME" ]; then
-    echo "[ok] Skill symlink already exists"
-elif [ -d "$USER_SKILLS_DIR/$SKILL_NAME" ]; then
-    echo "[!!] $USER_SKILLS_DIR/$SKILL_NAME already exists (not a symlink). Skipping."
-    echo "     Remove it manually if you want to link to this repo instead."
-else
-    ln -s "$SKILL_DIR" "$USER_SKILLS_DIR/$SKILL_NAME"
-    echo "[ok] Skill linked to $USER_SKILLS_DIR/$SKILL_NAME"
-fi
+for SKILL_NAME in "${SKILLS[@]}"; do
+    SKILL_DIR="$REPO_DIR/.claude/skills/$SKILL_NAME"
+    if [ -L "$USER_SKILLS_DIR/$SKILL_NAME" ]; then
+        echo "[ok] $SKILL_NAME — symlink already exists"
+    elif [ -d "$USER_SKILLS_DIR/$SKILL_NAME" ]; then
+        echo "[!!] $SKILL_NAME — $USER_SKILLS_DIR/$SKILL_NAME already exists (not a symlink). Skipping."
+        echo "     Remove it manually if you want to link to this repo instead."
+    else
+        ln -s "$SKILL_DIR" "$USER_SKILLS_DIR/$SKILL_NAME"
+        echo "[ok] $SKILL_NAME — linked to $USER_SKILLS_DIR/$SKILL_NAME"
+    fi
+done
 
 # 3. Check MCP config
 CLAUDE_JSON="$HOME/.claude.json"
@@ -61,4 +64,6 @@ fi
 
 echo ""
 echo "=== Done! ==="
-echo "Start Claude Code and type /flights to search for flights."
+echo "Start Claude Code and use:"
+echo "  /flights          — search for flights"
+echo "  /update-playbook  — research and update the playbook"
