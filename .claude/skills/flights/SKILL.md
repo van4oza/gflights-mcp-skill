@@ -1,5 +1,5 @@
 ---
-name: flight-search
+name: flights
 description: Search for flights using Google Flights MCP with expert best practices from the playbook. Helps users find the best deals by searching broadly, using date flexibility, comparing options, and normalizing fares. Use this skill whenever the user mentions flights, airfare, plane tickets, travel dates, cheap flights, flight deals, booking flights, airport searches, round-trip, one-way, layovers, nonstop, or any flight-related travel planning — even if they don't explicitly say "search for flights."
 user_invocable: true
 command: flights

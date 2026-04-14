@@ -71,7 +71,7 @@ cd gflights-mcp-skil
 
 The install script will:
 1. Install the `fli` MCP server via pipx (if not already installed)
-2. Symlink the skill to `~/.claude/skills/flight-search` so it's available in all your Claude Code sessions
+2. Symlink all skills to `~/.claude/skills/` so they're available in all your Claude Code sessions
 3. Show you how to configure the MCP server globally
 
 ## Manual Install
@@ -94,14 +94,14 @@ fli-mcp  # should start the MCP server on STDIO
 
 ```bash
 git clone https://github.com/van4oza/gflights-mcp-skil.git
-ln -s "$(pwd)/gflights-mcp-skil/.claude/skills/flight-search" ~/.claude/skills/flight-search
+ln -s "$(pwd)/gflights-mcp-skil/.claude/skills/flights" ~/.claude/skills/flights
 ```
 
 **Option B — Copy:**
 
 ```bash
 git clone https://github.com/van4oza/gflights-mcp-skil.git
-cp -r gflights-mcp-skil/.claude/skills/flight-search ~/.claude/skills/flight-search
+cp -r gflights-mcp-skil/.claude/skills/flights ~/.claude/skills/flights
 ```
 
 ### 3. Configure the MCP server
@@ -168,7 +168,7 @@ The skill combines two things:
 ├── google-flights-deep-research-prompt.md # Research methodology for updates
 └── .claude/
     └── skills/
-        ├── flight-search/
+        ├── flights/
         │   └── SKILL.md                   # /flights skill
         ├── test-flights/
         │   └── SKILL.md                   # /test-flights A/B comparison

@@ -3,7 +3,7 @@ set -e
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 USER_SKILLS_DIR="$HOME/.claude/skills"
-SKILLS=("flight-search" "update-playbook" "test-flights")
+SKILLS=("flights" "update-playbook" "test-flights")
 
 echo "=== Google Flights Skills Installer ==="
 echo ""

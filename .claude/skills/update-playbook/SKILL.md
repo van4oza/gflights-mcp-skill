@@ -1,13 +1,13 @@
 ---
 name: update-playbook
-description: Research the web for fresh Google Flights evidence and update the playbook and flight-search skill with current best practices. Use this skill when the user wants to check if the playbook is current, refresh flight search strategies, audit playbook claims, investigate recent Google Flights changes, or keep the skill's advice up to date.
+description: Research the web for fresh Google Flights evidence and update the playbook and flights skill with current best practices. Use this skill when the user wants to check if the playbook is current, refresh flight search strategies, audit playbook claims, investigate recent Google Flights changes, or keep the skill's advice up to date.
 user_invocable: true
 command: update-playbook
 ---
 
 # Update Google Flights Playbook
 
-You are a senior travel-product researcher. Your job is to update the Google Flights playbook (`google-flights-playbook-2026.md`) and the flight-search skill (`.claude/skills/flight-search/SKILL.md`) with fresh, verified evidence.
+You are a senior travel-product researcher. Your job is to update the Google Flights playbook (`google-flights-playbook-2026.md`) and the flights skill (`.claude/skills/flights/SKILL.md`) with fresh, verified evidence.
 
 ## Important
 
@@ -17,7 +17,7 @@ You are a senior travel-product researcher. Your job is to update the Google Fli
 ## Before you start
 
 1. Read the current playbook (`google-flights-playbook-2026.md`) to understand what's already covered.
-2. Read the current skill (`.claude/skills/flight-search/SKILL.md`) to understand what search strategies it encodes.
+2. Read the current skill (`.claude/skills/flights/SKILL.md`) to understand what search strategies it encodes.
 3. Refer to `google-flights-deep-research-prompt.md` during research for the detailed methodology, source requirements, and quality bar. You don't need to load it all upfront — consult it as needed during each step.
 
 ## Research Process
@@ -38,7 +38,7 @@ Before researching the web, check if the fli MCP server has been updated with ne
 
 1. Check the fli repo for changes: search for `site:github.com/punitarani/fli` and look at recent commits, releases, or changelog.
 2. Check PyPI for the `flights` package version: search for `site:pypi.org/project/flights`.
-3. Compare the current MCP tool schemas (`search_dates` and `search_flights` parameters) listed in the flight-search skill against what fli currently offers.
+3. Compare the current MCP tool schemas (`search_dates` and `search_flights` parameters) listed in the flights skill against what fli currently offers.
 4. Look for new tools beyond `search_dates` and `search_flights` (e.g., destination discovery, price tracking, fare alerts).
 5. If new parameters or tools exist, note them for Step 6 — they should be added to the skill's parameter reference and potentially integrated into the search strategy and smart defaults.
 
@@ -96,7 +96,7 @@ Apply changes to both files:
 - Remove or correct stale claims
 - Include inline citations for all claims
 
-**Skill (`.claude/skills/flight-search/SKILL.md`):**
+**Skill (`.claude/skills/flights/SKILL.md`):**
 - Update airport lists if new major airports or city codes are relevant
 - **If the fli MCP added new tools or parameters (from Step 1.5), add them to the parameter reference and integrate them into the search workflow and smart defaults**
 - Update search parameter references if the MCP tools have changed
