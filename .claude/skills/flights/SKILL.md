@@ -58,6 +58,10 @@ Only ask about what's missing from the user's message — don't re-ask what they
   - Berlin: BER
   - Barcelona: BCN
   - Rome: FCO, CIA
+  - Moscow: SVO, DME, VKO
+  - Madrid: MAD
+  - São Paulo: GRU, CGH, VCP
+  - Buenos Aires: EZE, AEP
 
 - For cities not listed above, check if there are nearby airports within reasonable ground-transport distance (1-2 hours). Use your knowledge of airport geography — many cities have secondary airports that serve low-cost carriers with significantly cheaper fares.
 
@@ -73,6 +77,8 @@ When the user has flexible dates:
 
 When dates are fixed, skip straight to `search_flights`.
 
+**Variable trip lengths:** When the user gives a range (e.g. "2-4 weeks"), run `search_dates` in parallel for each candidate duration (14, 21, 28 days). Present results grouped by duration — the cheapest trip length may not be the shortest or longest. In testing, a 3-week trip was €115+ cheaper than 2 weeks on the same route.
+
 ### 4. Apply Smart Defaults
 
 Before running `search_flights`, apply these defaults to every search — they reflect how experienced travelers actually compare fares:
@@ -82,6 +88,8 @@ Before running `search_flights`, apply these defaults to every search — they r
 - **Use `exclude_basic_economy: true`** when the user is not explicitly budget-hunting — basic economy fares lack seat selection, changes, and often overhead bin access. Only include them when the user specifically wants the absolute cheapest option or says they travel light.
 - **Use `departure_window`** when the user mentions time preferences — e.g., "no red-eyes" → `"6-20"`, "morning flights" → `"6-12"`, "afternoon" → `"12-18"`.
 - **Use `emissions: "LESS"`** when the user mentions sustainability, environment, carbon footprint, or eco-friendly travel. Otherwise default to `"ALL"`.
+
+**Important: bag filters can cause empty results on round-trip searches.** If `search_flights` with `carry_on` or `checked_bags` returns zero results, immediately retry the same search without bag parameters. Present those results but note that displayed prices don't include bag fees. Getting results without bag pricing is better than getting no results at all.
 
 These smart defaults mean the results the user sees reflect **real trip cost**, not misleading headline fares.
 
@@ -104,6 +112,8 @@ Format your findings as a clear comparison. For each recommended option include:
 - Duration and number of stops
 - Layover details (duration, airport)
 - Any warnings (self-transfer, overnight layover, airport change, long layover)
+
+When round-trip fares from `search_dates` and one-way fares from `search_flights` coexist in the same response, explicitly label each price as **"round-trip bundled fare"**, **"one-way (outbound)"**, **"one-way (return)"**, or **"combined one-way total"**. Round-trip bundled fares are almost always cheaper than summed one-ways — call this out so the user understands the price difference.
 
 ### 7. Give Playbook-Informed Advice
 
@@ -152,6 +162,7 @@ Based on the results, proactively advise the user:
 3. **Normalize the fare**: bags, fare family, self-transfer, airport changes. Compare true trip cost.
 4. **Book direct** unless the OTA savings clearly justify the support trade-off.
 5. **Google Flights is the discovery layer; the airline checkout is the source of truth.** Always remind users to verify final details.
+6. **Never drop confirmed fares.** If `search_dates` returned a price, always present it prominently — even if `search_flights` can't break it into individual legs. Label it as a confirmed round-trip fare and direct the user to Google Flights to book it.
 
 ## Error Handling
 
@@ -159,6 +170,18 @@ Based on the results, proactively advise the user:
 - If an airport pair returns no results or errors (e.g. BUR→NRT doesn't exist as a route), silently skip it — don't report each failure individually. Only mention it if ALL airport pairs fail.
 - If `search_dates` returns no data for the entire date range, suggest the user try a wider range or different airports.
 - If prices look wrong (e.g. $0, negative, or unrealistically high like $99999), note the anomaly and exclude those results from your comparison.
+
+## Round-Trip Fallback Strategy
+
+Round-trip `search_flights` calls sometimes return zero results even when `search_dates` confirmed a fare for those exact dates. This is a known API quirk. When this happens, escalate through these steps:
+
+1. **Strip bag filters.** Retry the same dates without `carry_on` or `checked_bags`. Bag parameters are a common cause of empty round-trip results.
+
+2. **Shift dates ±1-2 days.** Try 4 nearby date pairs in parallel: `(+1,+1)`, `(-1,-1)`, `(+1,-1)`, `(-1,+1)`. A date that returns zero results one day often returns 40+ results the next.
+
+3. **Search each leg as one-way.** Drop `return_date` and run two separate one-way searches (outbound and return). Combine the cheapest outbound + cheapest return. Warn the user that summed one-way prices are typically higher than bundled round-trip fares, and booking separately means no connection protection between legs.
+
+4. **Present the `search_dates` price regardless.** If `search_dates` returned a fare that `search_flights` can't resolve into individual flights, still present that fare prominently. Label it as "confirmed round-trip fare (from date search)" and direct the user to search Google Flights directly with those exact dates to book it. Never silently drop a confirmed fare.
 
 ## Behavioral Guidelines
 

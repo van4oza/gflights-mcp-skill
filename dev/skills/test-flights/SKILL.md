@@ -44,7 +44,7 @@ Then compare:
 
 ## Test Scenarios
 
-Run all 3 scenarios. Use dates approximately 6-8 weeks from today to ensure availability. Record the exact dates used at the top of the output so results are reproducible.
+Run all 4 scenarios. Use dates approximately 6-8 weeks from today to ensure availability. Record the exact dates used at the top of the output so results are reproducible.
 
 ---
 
@@ -86,8 +86,26 @@ Run all 3 scenarios. Use dates approximately 6-8 weeks from today to ensure avai
 - `search_dates`: Run in parallel for: ORD→CDG, ORD→ORY, MDW→CDG, MDW→ORY. Full target month, is_round_trip=true, trip_duration=7, sort_by_price=true.
 - Find cheapest date across all pairs.
 - `search_flights`: On best date, search top pairs with return_date set, carry_on=true, checked_bags=1, exclude_basic_economy=true.
+- **If round-trip returns empty:** Test the fallback — retry without bag filters, then try ±1 day shifts.
 
-**Compare:** Price, airport pair, date, smart defaults impact.
+**Compare:** Price, airport pair, date, smart defaults impact, whether fallback was needed.
+
+---
+
+### Scenario 4: Madrid → Moscow, flexible month, round-trip 3 weeks, 1 checked bag
+
+This scenario specifically tests the round-trip fallback strategy, multi-airport destinations, and variable trip duration handling.
+
+**Baseline:**
+- `search_flights`: origin=MAD, destination=SVO, departure_date=[15th of target month], return_date=[+21 days], sort_by=CHEAPEST
+
+**Skill-guided:**
+- `search_dates`: Run in parallel for: MAD→SVO, MAD→DME, MAD→VKO. Full target month, is_round_trip=true, trip_duration=21, sort_by_price=true. Also run trip_duration=14 and trip_duration=28 in parallel to test variable duration.
+- Find cheapest date and duration across all pairs.
+- `search_flights`: On best date, search top pairs with return_date set, carry_on=true, checked_bags=1.
+- **If round-trip returns empty:** Execute the full fallback: strip bags → shift dates → one-way legs → present search_dates fare.
+
+**Compare:** Price, airport pair, date, duration flexibility value, whether fallback was needed and which step resolved it.
 
 ---
 
@@ -131,10 +149,12 @@ After all scenarios, output the summary:
 | 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no |
 | 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no |
 | 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no |
+| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no |
 
-Skill found better price: X/3 scenarios
-Alternate airport won: X/3 scenarios
-Alternate date won: X/3 scenarios
+Skill found better price: X/4 scenarios
+Alternate airport won: X/4 scenarios
+Alternate date won: X/4 scenarios
+Fallback strategy needed: X/4 scenarios
 Average savings: $XX (XX%)
 
 VERDICT: [PASS — skill adds clear value / MIXED — skill helps sometimes / FAIL — skill doesn't improve results]

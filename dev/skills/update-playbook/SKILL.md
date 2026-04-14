@@ -103,6 +103,7 @@ Apply changes to both files:
 - Update advice logic if playbook findings change best practices
 - Update smart defaults (carry_on, exclude_basic_economy, departure_window, emissions) if playbook findings change recommendations
 - Add new strategies discovered during research
+- Check for new round-trip API quirks or fallback patterns that need updating (the fli MCP sometimes returns empty results for valid round-trip date pairs — the skill has a fallback escalation for this)
 
 **Test skill (`dev/skills/test-flights/SKILL.md`):**
 - If airport mappings changed in the flight skill, update the test scenarios' airport pairs to match
