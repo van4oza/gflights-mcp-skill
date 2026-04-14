@@ -104,7 +104,7 @@ Apply changes to both files:
 - Update smart defaults (carry_on, exclude_basic_economy, departure_window, emissions) if playbook findings change recommendations
 - Add new strategies discovered during research
 
-**Test skill (`.claude/skills/test-flights/SKILL.md`):**
+**Test skill (`dev/skills/test-flights/SKILL.md`):**
 - If airport mappings changed in the flight skill, update the test scenarios' airport pairs to match
 - If new search strategies were added, add a matching A/B test scenario that validates the strategy
 - If MCP tool parameters changed, update both baseline and skill-guided search specs

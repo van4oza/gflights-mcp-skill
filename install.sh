@@ -4,7 +4,11 @@ set -e
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 USER_SKILLS_DIR="$HOME/.claude/skills"
 DIST_DIR="$REPO_DIR/dist"
-SKILLS=("flights" "update-playbook" "test-flights")
+DEV_MODE=false
+
+if [ "$1" = "--dev" ]; then
+    DEV_MODE=true
+fi
 
 echo "=== Google Flights Skills Installer ==="
 echo ""
@@ -26,41 +30,50 @@ else
     echo "[ok] fli-mcp installed"
 fi
 
-# 2. Symlink skills to user-level (for Claude Code)
+# 2. Symlink /flights skill (for Claude Code)
 echo ""
 echo "--- Claude Code skills ---"
 mkdir -p "$USER_SKILLS_DIR"
 
-for SKILL_NAME in "${SKILLS[@]}"; do
-    SKILL_DIR="$REPO_DIR/.claude/skills/$SKILL_NAME"
-    if [ -L "$USER_SKILLS_DIR/$SKILL_NAME" ]; then
-        echo "[ok] $SKILL_NAME — symlink already exists"
-    elif [ -d "$USER_SKILLS_DIR/$SKILL_NAME" ]; then
-        echo "[!!] $SKILL_NAME — $USER_SKILLS_DIR/$SKILL_NAME already exists (not a symlink). Skipping."
-        echo "     Remove it manually if you want to link to this repo instead."
-    else
-        ln -s "$SKILL_DIR" "$USER_SKILLS_DIR/$SKILL_NAME"
-        echo "[ok] $SKILL_NAME — linked to $USER_SKILLS_DIR/$SKILL_NAME"
-    fi
-done
+SKILL_DIR="$REPO_DIR/.claude/skills/flights"
+if [ -L "$USER_SKILLS_DIR/flights" ]; then
+    echo "[ok] flights — symlink already exists"
+elif [ -d "$USER_SKILLS_DIR/flights" ]; then
+    echo "[!!] flights — $USER_SKILLS_DIR/flights already exists (not a symlink). Skipping."
+else
+    ln -s "$SKILL_DIR" "$USER_SKILLS_DIR/flights"
+    echo "[ok] flights — linked to $USER_SKILLS_DIR/flights"
+fi
 
-# 3. Build .skill packages (for Claude Desktop / Dispatch / Chat)
+# 2b. Dev skills (only with --dev flag)
+if [ "$DEV_MODE" = true ]; then
+    echo ""
+    echo "--- Dev skills (--dev) ---"
+    for SKILL_NAME in test-flights update-playbook; do
+        SKILL_DIR="$REPO_DIR/dev/skills/$SKILL_NAME"
+        if [ -L "$USER_SKILLS_DIR/$SKILL_NAME" ]; then
+            echo "[ok] $SKILL_NAME — symlink already exists"
+        elif [ -d "$USER_SKILLS_DIR/$SKILL_NAME" ]; then
+            echo "[!!] $SKILL_NAME — $USER_SKILLS_DIR/$SKILL_NAME already exists (not a symlink). Skipping."
+        else
+            ln -s "$SKILL_DIR" "$USER_SKILLS_DIR/$SKILL_NAME"
+            echo "[ok] $SKILL_NAME — linked to $USER_SKILLS_DIR/$SKILL_NAME"
+        fi
+    done
+fi
+
+# 3. Build .skill package (for Claude Desktop / Dispatch / Chat)
 echo ""
-echo "--- Claude Desktop / Dispatch / Chat skills ---"
+echo "--- Claude Desktop / Dispatch / Chat ---"
 mkdir -p "$DIST_DIR"
 
-for SKILL_NAME in "${SKILLS[@]}"; do
-    (cd "$REPO_DIR/.claude/skills/$SKILL_NAME" && zip -j "$DIST_DIR/$SKILL_NAME.skill" SKILL.md) > /dev/null 2>&1
-    echo "[ok] $SKILL_NAME.skill — built in dist/"
-done
+(cd "$REPO_DIR/.claude/skills/flights" && zip -j "$DIST_DIR/flights.skill" SKILL.md) > /dev/null 2>&1
+echo "[ok] flights.skill — built in dist/"
 
 echo ""
-echo "  To use skills in Claude Desktop chat / Dispatch mode:"
+echo "  To use in Claude Desktop chat / Dispatch mode:"
 echo "  1. Open Claude Desktop → Customize → Skills"
-echo "  2. Upload .skill files from: $DIST_DIR/"
-echo "     - flights.skill"
-echo "     - test-flights.skill"
-echo "     - update-playbook.skill"
+echo "  2. Upload: $DIST_DIR/flights.skill"
 
 # 4. Check MCP config
 echo ""
@@ -87,5 +100,8 @@ fi
 echo ""
 echo "=== Done! ==="
 echo ""
-echo "Claude Code (terminal):          /flights  /test-flights  /update-playbook"
-echo "Claude Desktop (chat/dispatch):  Upload .skill files from dist/"
+echo "Claude Code:    /flights"
+echo "Claude Desktop: Upload flights.skill from dist/"
+if [ "$DEV_MODE" = true ]; then
+    echo "Dev skills:     /test-flights  /update-playbook"
+fi

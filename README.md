@@ -25,36 +25,6 @@ flexible on dates. Economy, 1 checked bag. Budget around $800.
 
 Claude will search SFO/OAK/SJC to NRT/HND across June, find the cheapest date windows, pull detailed flight options, and present a comparison table with actionable advice.
 
-### `/test-flights` — A/B test the skill's value
-
-Type `/test-flights` to run an automated comparison that proves the skill finds better deals:
-
-- Runs each scenario **two ways**: naive single-airport search vs skill-guided multi-airport + date-flex search
-- Compares prices (bag-inclusive), winning airport pairs, and winning dates
-- Outputs a structured report showing savings per scenario
-- Gives a **PASS/MIXED/FAIL verdict** on whether the skill adds value
-
-Example output:
-```
-=== TEST SUMMARY ===
-Skill found better price: 3/3 scenarios
-Alternate airport won: 2/3 scenarios
-Average savings: $127 (23%)
-VERDICT: PASS — skill adds clear value
-```
-
-### `/update-playbook` — Research and update the playbook
-
-Type `/update-playbook` to kick off a web research session that:
-
-- **Audits every claim** in the current playbook against fresh sources
-- **Searches official Google docs**, travel publishers, and traveler forums
-- **Resolves contradictions** with a disagreement ledger
-- **Presents findings** for your approval before changing anything
-- **Updates both** the playbook and the `/flights` skill with current best practices
-
-This follows a rigorous research methodology defined in `google-flights-deep-research-prompt.md`, requiring 8+ official sources, 6+ publisher sources, and 10+ community threads before any update is applied.
-
 ## Requirements
 
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (CLI, desktop app, or IDE extension)
@@ -71,7 +41,7 @@ cd gflights-mcp-skil
 
 The install script will:
 1. Install the `fli` MCP server via pipx (if not already installed)
-2. Symlink all skills to `~/.claude/skills/` so they're available in all your Claude Code sessions
+2. Symlink the `/flights` skill to `~/.claude/skills/` so it's available in all your Claude Code sessions
 3. Show you how to configure the MCP server globally
 
 ## Manual Install
@@ -142,9 +112,9 @@ Skills in `.claude/skills/` only work in Claude Code's terminal mode. To use the
 
 Then in Claude Desktop:
 1. Open **Customize > Skills**
-2. Upload `dist/flights.skill`, `dist/test-flights.skill`, and `dist/update-playbook.skill`
+2. Upload `dist/flights.skill`
 
-Note: `/flights` and `/test-flights` require the fli MCP server to be configured in Claude Desktop too (see step 3 above).
+Note: `/flights` requires the fli MCP server to be configured in Claude Desktop too (see step 3 above).
 
 ## Usage
 
@@ -180,14 +150,16 @@ The skill combines two things:
 ├── .mcp.json                              # MCP server config (project-level)
 ├── google-flights-playbook-2026.md        # Best practices reference
 ├── google-flights-deep-research-prompt.md # Research methodology for updates
-└── .claude/
+├── .claude/
+│   └── skills/
+│       └── flights/
+│           └── SKILL.md                   # /flights skill (public)
+└── dev/
     └── skills/
-        ├── flights/
-        │   └── SKILL.md                   # /flights skill
         ├── test-flights/
-        │   └── SKILL.md                   # /test-flights A/B comparison
+        │   └── SKILL.md                   # /test-flights — A/B value test
         └── update-playbook/
-            └── SKILL.md                   # /update-playbook skill
+            └── SKILL.md                   # /update-playbook — playbook research
 ```
 
 ## Key search strategies (from the playbook)
@@ -198,6 +170,21 @@ The skill combines two things:
 - **Compare Best vs Cheapest**: If the gap is small, pick the cleaner itinerary. If large, inspect what you're giving up (self-transfer, overnight layover, OTA booking).
 - **Book direct with the airline**: Unless OTA savings are meaningful and the OTA is reputable. The skill always recommends this.
 - **Verify at checkout**: Google Flights prices can differ from the airline's final price. Always confirm fare family, bags, and cancellation rules before paying.
+
+## Development
+
+The repo includes two internal dev skills for maintaining and testing the `/flights` skill. These are **not installed by default** — they're for contributors and maintainers.
+
+### Install dev skills
+
+```bash
+./install.sh --dev
+```
+
+This symlinks two additional skills:
+
+- **`/test-flights`** — A/B compares naive searches vs skill-guided searches to prove the skill finds better deals. Outputs a pass/fail report with savings per scenario.
+- **`/update-playbook`** — Researches the web for fresh Google Flights evidence (official docs, travel publishers, forums) and updates the playbook, flight skill, and test skill.
 
 ## License
 
