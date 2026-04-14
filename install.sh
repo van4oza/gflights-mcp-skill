@@ -3,7 +3,7 @@ set -e
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 USER_SKILLS_DIR="$HOME/.claude/skills"
-SKILLS=("flight-search" "update-playbook")
+SKILLS=("flight-search" "update-playbook" "test-flights")
 
 echo "=== Google Flights Skills Installer ==="
 echo ""
@@ -67,3 +67,4 @@ echo "=== Done! ==="
 echo "Start Claude Code and use:"
 echo "  /flights          — search for flights"
 echo "  /update-playbook  — research and update the playbook"
+echo "  /test-flights     — A/B test the skill's value"

@@ -87,6 +87,13 @@ Apply changes to both files:
 - Update advice logic if playbook findings change best practices
 - Add new strategies discovered during research
 
+**Test skill (`.claude/skills/test-flights/SKILL.md`):**
+- If airport mappings changed in the flight skill, update the test scenarios' airport pairs to match
+- If new search strategies were added, add a matching A/B test scenario that validates the strategy
+- If MCP tool parameters changed, update both baseline and skill-guided search specs
+- If bag fee estimates changed, update the baseline bag-fee assumption ($70 default)
+- Keep the test scenarios realistic — use routes where the multi-airport strategy is likely to show value
+
 ## Source Requirements (minimums from the research prompt)
 
 - **8+ official/primary sources**

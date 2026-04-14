@@ -25,6 +25,24 @@ flexible on dates. Economy, 1 checked bag. Budget around $800.
 
 Claude will search SFO/OAK/SJC to NRT/HND across June, find the cheapest date windows, pull detailed flight options, and present a comparison table with actionable advice.
 
+### `/test-flights` — A/B test the skill's value
+
+Type `/test-flights` to run an automated comparison that proves the skill finds better deals:
+
+- Runs each scenario **two ways**: naive single-airport search vs skill-guided multi-airport + date-flex search
+- Compares prices (bag-inclusive), winning airport pairs, and winning dates
+- Outputs a structured report showing savings per scenario
+- Gives a **PASS/MIXED/FAIL verdict** on whether the skill adds value
+
+Example output:
+```
+=== TEST SUMMARY ===
+Skill found better price: 3/3 scenarios
+Alternate airport won: 2/3 scenarios
+Average savings: $127 (23%)
+VERDICT: PASS — skill adds clear value
+```
+
 ### `/update-playbook` — Research and update the playbook
 
 Type `/update-playbook` to kick off a web research session that:
@@ -152,6 +170,8 @@ The skill combines two things:
     └── skills/
         ├── flight-search/
         │   └── SKILL.md                   # /flights skill
+        ├── test-flights/
+        │   └── SKILL.md                   # /test-flights A/B comparison
         └── update-playbook/
             └── SKILL.md                   # /update-playbook skill
 ```
