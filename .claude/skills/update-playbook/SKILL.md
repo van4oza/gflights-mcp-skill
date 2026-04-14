@@ -32,6 +32,16 @@ Read the playbook and build a claim inventory. For each major claim, assign a st
 - needs verification
 - likely missing nuance
 
+### Step 1.5 — MCP tool audit
+
+Before researching the web, check if the fli MCP server has been updated with new tools or parameters that we're not using yet:
+
+1. Check the fli repo for changes: search for `site:github.com/punitarani/fli` and look at recent commits, releases, or changelog.
+2. Check PyPI for the `flights` package version: search for `site:pypi.org/project/flights`.
+3. Compare the current MCP tool schemas (`search_dates` and `search_flights` parameters) listed in the flight-search skill against what fli currently offers.
+4. Look for new tools beyond `search_dates` and `search_flights` (e.g., destination discovery, price tracking, fare alerts).
+5. If new parameters or tools exist, note them for Step 6 — they should be added to the skill's parameter reference and potentially integrated into the search strategy and smart defaults.
+
 ### Step 2 — Official-source pass
 
 Search and verify against official Google sources first. Use queries like:
@@ -88,6 +98,7 @@ Apply changes to both files:
 
 **Skill (`.claude/skills/flight-search/SKILL.md`):**
 - Update airport lists if new major airports or city codes are relevant
+- **If the fli MCP added new tools or parameters (from Step 1.5), add them to the parameter reference and integrate them into the search workflow and smart defaults**
 - Update search parameter references if the MCP tools have changed
 - Update advice logic if playbook findings change best practices
 - Update smart defaults (carry_on, exclude_basic_economy, departure_window, emissions) if playbook findings change recommendations
