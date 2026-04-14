@@ -35,35 +35,7 @@ Only ask about what's missing from the user's message — don't re-ask what they
 
 **This is the single biggest lever for savings.** Do NOT search just one airport pair.
 
-- If the user says a city, think about **all viable airports** for that city and nearby alternatives:
-  - New York: JFK, EWR, LGA
-  - London: LHR, LGW, STN, LTN
-  - Paris: CDG, ORY
-  - Tokyo: NRT, HND
-  - Los Angeles: LAX, BUR, SNA, ONT, LGB
-  - San Francisco Bay Area: SFO, OAK, SJC
-  - Chicago: ORD, MDW
-  - Washington DC: IAD, DCA, BWI
-  - Milan: MXP, LIN, BGY
-  - Stockholm: ARN, BMA, NYO
-  - Bangkok: BKK, DMK
-  - Seoul: ICN, GMP
-  - Istanbul: IST, SAW
-  - Dubai: DXB, DWC
-  - Singapore: SIN
-  - Mumbai: BOM
-  - Toronto: YYZ, YTZ
-  - Sydney: SYD
-  - Melbourne: MEL, AVV
-  - Berlin: BER
-  - Barcelona: BCN
-  - Rome: FCO, CIA
-  - Moscow: SVO, DME, VKO
-  - Madrid: MAD
-  - São Paulo: GRU, CGH, VCP
-  - Buenos Aires: EZE, AEP
-
-- For cities not listed above, check if there are nearby airports within reasonable ground-transport distance (1-2 hours). Use your knowledge of airport geography — many cities have secondary airports that serve low-cost carriers with significantly cheaper fares.
+- If the user says a city, use your knowledge of airport geography to identify **all viable airports** — the main hub(s) plus any secondary airports within reasonable ground-transport distance (1-2 hours). Many cities have secondary airports that serve low-cost carriers with significantly cheaper fares (e.g. London has 4+ airports, Moscow has 3, the NYC area has 3). Always search at least 2-3 airports for major cities.
 
 - Search **multiple origin-destination pairs in parallel** when applicable. Launch parallel tool calls for different airport combinations.
 
