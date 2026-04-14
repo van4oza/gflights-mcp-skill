@@ -1,6 +1,6 @@
 ---
 name: test-flights
-description: A/B test the /flights skill by comparing naive single-airport searches against skill-guided multi-airport + date-flex + bag-normalized searches. Proves the skill finds better deals.
+description: A/B test the /flights skill by comparing naive single-airport searches against skill-guided multi-airport + date-flex + bag-normalized searches. Proves the skill finds better deals. Use this skill when the user wants to test, validate, benchmark, verify, or check whether the flight search skill is working well and adding value.
 user_invocable: true
 command: test-flights
 ---
@@ -40,7 +40,7 @@ Then compare:
 
 ## Test Scenarios
 
-Run all 3 scenarios. Use dates approximately 6-8 weeks from today to ensure availability.
+Run all 3 scenarios. Use dates approximately 6-8 weeks from today to ensure availability. Record the exact dates used at the top of the output so results are reproducible.
 
 ---
 
@@ -143,4 +143,12 @@ VERDICT: [PASS — skill adds clear value / MIXED — skill helps sometimes / FA
 - Use today's date + 6 weeks as the target month for all scenarios (ensures future dates with decent availability).
 - If a specific airport pair returns no results (e.g. BUR→NRT doesn't exist), note it and skip — that's valid information (the skill would learn that too).
 - Round all prices to whole dollars for clean comparison.
-- Estimate bag fees at $70 round-trip for baseline comparisons when the skill-guided search uses `checked_bags=1`.
+- Estimate bag fees at $70 round-trip for baseline comparisons when the skill-guided search uses `checked_bags=1`. This is a rough average — actual fees vary by airline ($30-$100+). Note this approximation in the output.
+
+## When the Skill-Guided Search Does NOT Win
+
+If the baseline matches or beats the skill-guided search in a scenario:
+- Note it honestly — don't hide unfavorable results.
+- Investigate why: Was it a route with only one viable airport pair? A date range where the 15th happened to be cheapest? A route where bag fees are already included?
+- The skill may not add value on every route — it's most valuable for multi-airport cities and flexible dates. Single-airport-to-single-airport routes with fixed dates won't show improvement.
+- If the skill loses on 2+ scenarios, flag this as a potential area for skill improvement and suggest what strategies might help.

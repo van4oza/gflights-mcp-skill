@@ -1,6 +1,6 @@
 ---
 name: flight-search
-description: Search for flights using Google Flights MCP with expert best practices from the playbook. Helps users find the best deals by searching broadly, using date flexibility, comparing options, and normalizing fares.
+description: Search for flights using Google Flights MCP with expert best practices from the playbook. Helps users find the best deals by searching broadly, using date flexibility, comparing options, and normalizing fares. Use this skill whenever the user mentions flights, airfare, plane tickets, travel dates, cheap flights, flight deals, booking flights, airport searches, round-trip, one-way, layovers, nonstop, or any flight-related travel planning — even if they don't explicitly say "search for flights."
 user_invocable: true
 command: flights
 ---
@@ -20,13 +20,13 @@ Follow this sequence, adapted to what the user provides:
 
 ### 1. Gather Requirements
 
-Ask the user for what you don't already know (be concise, ask in one message):
+Only ask about what's missing from the user's message — don't re-ask what they already told you. At minimum you need origin, destination, and approximate dates. Everything else has sensible defaults (1 passenger, economy, round-trip, no bag preference). Ask in one concise message:
 - Origin city/airport(s)
 - Destination city/airport(s)
 - Travel dates or date range (and how flexible they are)
-- Round-trip or one-way
-- Number of passengers
-- Cabin class preference
+- Round-trip or one-way (default: round-trip)
+- Number of passengers (default: 1)
+- Cabin class preference (default: economy)
 - Baggage needs (carry-on, checked bags)
 - Any airline preferences or constraints
 - Budget range (if any)
@@ -49,6 +49,17 @@ Ask the user for what you don't already know (be concise, ask in one message):
   - Bangkok: BKK, DMK
   - Seoul: ICN, GMP
   - Istanbul: IST, SAW
+  - Dubai: DXB, DWC
+  - Singapore: SIN
+  - Mumbai: BOM
+  - Toronto: YYZ, YTZ
+  - Sydney: SYD
+  - Melbourne: MEL, AVV
+  - Berlin: BER
+  - Barcelona: BCN
+  - Rome: FCO, CIA
+
+- For cities not listed above, check if there are nearby airports within reasonable ground-transport distance (1-2 hours). Use your knowledge of airport geography — many cities have secondary airports that serve low-cost carriers with significantly cheaper fares.
 
 - Search **multiple origin-destination pairs in parallel** when applicable. Launch parallel tool calls for different airport combinations.
 
@@ -128,6 +139,13 @@ Based on the results, proactively advise the user:
 3. **Normalize the fare**: bags, fare family, self-transfer, airport changes. Compare true trip cost.
 4. **Book direct** unless the OTA savings clearly justify the support trade-off.
 5. **Google Flights is the discovery layer; the airline checkout is the source of truth.** Always remind users to verify final details.
+
+## Error Handling
+
+- If the MCP server is not available, tell the user the flight-search MCP server needs to be running and point them to the install instructions.
+- If an airport pair returns no results or errors (e.g. BUR→NRT doesn't exist as a route), silently skip it — don't report each failure individually. Only mention it if ALL airport pairs fail.
+- If `search_dates` returns no data for the entire date range, suggest the user try a wider range or different airports.
+- If prices look wrong (e.g. $0, negative, or unrealistically high like $99999), note the anomaly and exclude those results from your comparison.
 
 ## Behavioral Guidelines
 

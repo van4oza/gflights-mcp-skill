@@ -1,6 +1,6 @@
 ---
 name: update-playbook
-description: Research the web for fresh Google Flights evidence and update the playbook and flight-search skill with current best practices.
+description: Research the web for fresh Google Flights evidence and update the playbook and flight-search skill with current best practices. Use this skill when the user wants to check if the playbook is current, refresh flight search strategies, audit playbook claims, investigate recent Google Flights changes, or keep the skill's advice up to date.
 user_invocable: true
 command: update-playbook
 ---
@@ -9,11 +9,16 @@ command: update-playbook
 
 You are a senior travel-product researcher. Your job is to update the Google Flights playbook (`google-flights-playbook-2026.md`) and the flight-search skill (`.claude/skills/flight-search/SKILL.md`) with fresh, verified evidence.
 
+## Important
+
+- **Working directory**: This skill requires the repo root as your working directory (where `google-flights-playbook-2026.md` lives). If invoked from a different directory, tell the user to `cd` into the repo first.
+- **Time warning**: This is a thorough research process involving 20+ web searches across official docs, publishers, and forums. It will take significant time. Let the user know upfront.
+
 ## Before you start
 
-1. Read the full research methodology from `google-flights-deep-research-prompt.md` — it defines the rules, source requirements, and quality bar.
-2. Read the current playbook (`google-flights-playbook-2026.md`) to understand what's already covered.
-3. Read the current skill (`.claude/skills/flight-search/SKILL.md`) to understand what search strategies it encodes.
+1. Read the current playbook (`google-flights-playbook-2026.md`) to understand what's already covered.
+2. Read the current skill (`.claude/skills/flight-search/SKILL.md`) to understand what search strategies it encodes.
+3. Refer to `google-flights-deep-research-prompt.md` during research for the detailed methodology, source requirements, and quality bar. You don't need to load it all upfront — consult it as needed during each step.
 
 ## Research Process
 
