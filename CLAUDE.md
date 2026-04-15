@@ -14,6 +14,9 @@ Three Claude Code skills powered by the [fli](https://github.com/punitarani/fli)
 
 - `./install.sh` — user install (flights only, symlinks to `~/.claude/skills/`, builds `dist/flights.skill`)
 - `./install.sh --dev` — dev install (also links test-flights and update-playbook)
+- `./install.sh --uninstall` — remove symlinks and `dist/` (does not uninstall fli-mcp)
+
+**Verify install:** Start Claude Code in this directory, type `/flights`, confirm the skill appears. Also confirm the fli MCP tools load by checking that `mcp__flight-search__search_flights` shows up in available tools.
 
 Dev skills live in `dev/skills/` (not `.claude/skills/`) so users who clone the repo don't see them in their skill list.
 

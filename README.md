@@ -1,10 +1,8 @@
-# Google Flights Skills for Claude Code
+# Google Flights Skill for Claude Code
 
-A pair of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills for flight search and playbook maintenance. Uses the [fli](https://github.com/punitarani/fli) MCP server for Google Flights data and applies proven search strategies from a curated best-practices playbook.
+A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that turns Claude into an expert flight search assistant. Uses the [fli](https://github.com/punitarani/fli) MCP server for Google Flights data and applies proven search strategies from a curated best-practices playbook.
 
-## Skills
-
-### `/flights` — Search for flights
+## `/flights` — Search for flights
 
 Type `/flights` in Claude Code and describe your trip. The skill will:
 
@@ -42,7 +40,10 @@ cd gflights-mcp-skil
 The install script will:
 1. Install the `fli` MCP server via pipx (if not already installed)
 2. Symlink the `/flights` skill to `~/.claude/skills/` so it's available in all your Claude Code sessions
-3. Show you how to configure the MCP server globally
+3. Build `dist/flights.skill` for Claude Desktop uploads
+4. Show you how to configure the MCP server globally
+
+To uninstall: `./install.sh --uninstall` (removes symlinks and `dist/`; does not touch the fli pipx package).
 
 ## Manual Install
 

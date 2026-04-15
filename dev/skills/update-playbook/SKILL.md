@@ -1,8 +1,6 @@
 ---
 name: update-playbook
 description: Research the web for fresh Google Flights evidence and update the playbook and flights skill with current best practices. Use this skill when the user wants to check if the playbook is current, refresh flight search strategies, audit playbook claims, investigate recent Google Flights changes, or keep the skill's advice up to date.
-user_invocable: true
-command: update-playbook
 ---
 
 # Update Google Flights Playbook

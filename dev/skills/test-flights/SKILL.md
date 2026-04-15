@@ -1,8 +1,6 @@
 ---
 name: test-flights
 description: A/B test the /flights skill by comparing naive single-airport searches against skill-guided multi-airport + date-flex + bag-normalized searches. Proves the skill finds better deals. Use this skill when the user wants to test, validate, benchmark, verify, or check whether the flight search skill is working well and adding value.
-user_invocable: true
-command: test-flights
 ---
 
 # Flight Search Skill — A/B Value Test

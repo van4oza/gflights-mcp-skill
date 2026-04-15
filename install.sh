@@ -5,12 +5,41 @@ REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 USER_SKILLS_DIR="$HOME/.claude/skills"
 DIST_DIR="$REPO_DIR/dist"
 DEV_MODE=false
+UNINSTALL=false
 
-if [ "$1" = "--dev" ]; then
-    DEV_MODE=true
+for arg in "$@"; do
+    case "$arg" in
+        --dev) DEV_MODE=true ;;
+        --uninstall) UNINSTALL=true ;;
+        -h|--help)
+            echo "Usage: ./install.sh [--dev] [--uninstall]"
+            echo "  --dev        Also install test-flights and update-playbook dev skills"
+            echo "  --uninstall  Remove symlinks and dist/ (does not uninstall fli-mcp)"
+            exit 0
+            ;;
+    esac
+done
+
+# Uninstall path
+if [ "$UNINSTALL" = true ]; then
+    echo "=== Google Flights Skill Uninstaller ==="
+    echo ""
+    for name in flights test-flights update-playbook; do
+        if [ -L "$USER_SKILLS_DIR/$name" ]; then
+            rm "$USER_SKILLS_DIR/$name"
+            echo "[ok] removed symlink $USER_SKILLS_DIR/$name"
+        fi
+    done
+    if [ -d "$DIST_DIR" ]; then
+        rm -rf "$DIST_DIR"
+        echo "[ok] removed $DIST_DIR"
+    fi
+    echo ""
+    echo "Note: fli-mcp (pipx package) was not touched. Run 'pipx uninstall flights' to remove it."
+    exit 0
 fi
 
-echo "=== Google Flights Skills Installer ==="
+echo "=== Google Flights Skill Installer ==="
 echo ""
 
 # 1. Install the fli MCP server
@@ -30,36 +59,32 @@ else
     echo "[ok] fli-mcp installed"
 fi
 
+# Helper: symlink a skill, report if already present
+link_skill() {
+    local name="$1"
+    local src="$2"
+    if [ -L "$USER_SKILLS_DIR/$name" ]; then
+        echo "[ok] $name — symlink already exists"
+    elif [ -d "$USER_SKILLS_DIR/$name" ]; then
+        echo "[!!] $name — $USER_SKILLS_DIR/$name already exists (not a symlink). Skipping."
+    else
+        ln -s "$src" "$USER_SKILLS_DIR/$name"
+        echo "[ok] $name — linked to $USER_SKILLS_DIR/$name"
+    fi
+}
+
 # 2. Symlink /flights skill (for Claude Code)
 echo ""
 echo "--- Claude Code skills ---"
 mkdir -p "$USER_SKILLS_DIR"
-
-SKILL_DIR="$REPO_DIR/.claude/skills/flights"
-if [ -L "$USER_SKILLS_DIR/flights" ]; then
-    echo "[ok] flights — symlink already exists"
-elif [ -d "$USER_SKILLS_DIR/flights" ]; then
-    echo "[!!] flights — $USER_SKILLS_DIR/flights already exists (not a symlink). Skipping."
-else
-    ln -s "$SKILL_DIR" "$USER_SKILLS_DIR/flights"
-    echo "[ok] flights — linked to $USER_SKILLS_DIR/flights"
-fi
+link_skill "flights" "$REPO_DIR/.claude/skills/flights"
 
 # 2b. Dev skills (only with --dev flag)
 if [ "$DEV_MODE" = true ]; then
     echo ""
     echo "--- Dev skills (--dev) ---"
-    for SKILL_NAME in test-flights update-playbook; do
-        SKILL_DIR="$REPO_DIR/dev/skills/$SKILL_NAME"
-        if [ -L "$USER_SKILLS_DIR/$SKILL_NAME" ]; then
-            echo "[ok] $SKILL_NAME — symlink already exists"
-        elif [ -d "$USER_SKILLS_DIR/$SKILL_NAME" ]; then
-            echo "[!!] $SKILL_NAME — $USER_SKILLS_DIR/$SKILL_NAME already exists (not a symlink). Skipping."
-        else
-            ln -s "$SKILL_DIR" "$USER_SKILLS_DIR/$SKILL_NAME"
-            echo "[ok] $SKILL_NAME — linked to $USER_SKILLS_DIR/$SKILL_NAME"
-        fi
-    done
+    link_skill "test-flights" "$REPO_DIR/dev/skills/test-flights"
+    link_skill "update-playbook" "$REPO_DIR/dev/skills/update-playbook"
 fi
 
 # 3. Build .skill package (for Claude Desktop / Dispatch / Chat)
@@ -105,3 +130,6 @@ echo "Claude Desktop: Upload flights.skill from dist/"
 if [ "$DEV_MODE" = true ]; then
     echo "Dev skills:     /test-flights  /update-playbook"
 fi
+echo ""
+echo "Verify install: Start Claude Code in this directory and type '/flights' — the skill should appear in the list."
+echo "Uninstall:      ./install.sh --uninstall"
