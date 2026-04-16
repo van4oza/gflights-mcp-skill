@@ -25,8 +25,8 @@ How someone would use the MCP tools without the skill:
 
 ### Skill-guided (following /flights strategy)
 How the skill instructs searches:
-- Multiple origin and destination airports in parallel
-- `search_dates` first (with `sort_by_price: true`) to find cheapest date window
+- Multiple origin and destination airports in parallel, including **airport cluster** cities reachable by train/bus/short flight (e.g. for Madrid, also check Barcelona and Valencia as budget airline hubs)
+- `search_dates` first (with `sort_by_price: true`) to find cheapest date window, plus `search_dates` with `is_round_trip: false` in both directions for independent one-way date discovery
 - `search_flights` on the best 1-2 dates with smart defaults applied:
   - `carry_on: true` (always — normalizes pricing, filters basic economy on US domestic)
   - `checked_bags: 1` (when scenario involves checked luggage)
@@ -38,11 +38,12 @@ Then compare:
 - **Airport**: did an alternate airport win?
 - **Date**: did an alternate date win?
 - **Smart defaults impact**: did carry_on/exclude_basic_economy change the price picture?
+- **One-way combo**: for round-trips, was the combined one-way total cheaper than the round-trip bundled fare?
 - **Options**: how many more options did the skill surface?
 
 ## Test Scenarios
 
-Run all 4 scenarios. Use dates approximately 6-8 weeks from today to ensure availability. Record the exact dates used at the top of the output so results are reproducible.
+Run all 5 scenarios. Use dates approximately 6-8 weeks from today to ensure availability. Record the exact dates used at the top of the output so results are reproducible.
 
 ---
 
@@ -84,9 +85,10 @@ Run all 4 scenarios. Use dates approximately 6-8 weeks from today to ensure avai
 - `search_dates`: Run in parallel for: ORD→CDG, ORD→ORY, MDW→CDG, MDW→ORY. Full target month, is_round_trip=true, trip_duration=7, sort_by_price=true.
 - Find cheapest date across all pairs.
 - `search_flights`: On best date, search top pairs with return_date set, carry_on=true, checked_bags=1, exclude_basic_economy=true.
-- **If round-trip returns empty:** Test the fallback — retry without bag filters, then try ±1 day shifts.
+- **One-way combination**: In parallel with the round-trip search, also run two one-way `search_flights` (outbound: best_origin→best_dest on departure_date, return: best_dest→best_origin on return_date) with same smart defaults. Compare combined one-way total vs round-trip bundled fare.
+- **If round-trip returns empty:** Test the fallback — retry without bag filters, then try ±1 day shifts. (One-way results are already available from the parallel search.)
 
-**Compare:** Price, airport pair, date, smart defaults impact, whether fallback was needed.
+**Compare:** Price, airport pair, date, smart defaults impact, whether fallback was needed, whether one-way combination was cheaper than round-trip.
 
 ---
 
@@ -101,9 +103,31 @@ This scenario specifically tests the round-trip fallback strategy, multi-airport
 - `search_dates`: Run in parallel for: MAD→SVO, MAD→DME, MAD→VKO. Full target month, is_round_trip=true, trip_duration=21, sort_by_price=true. Also run trip_duration=14 and trip_duration=28 in parallel to test variable duration.
 - Find cheapest date and duration across all pairs.
 - `search_flights`: On best date, search top pairs with return_date set, carry_on=true, checked_bags=1.
-- **If round-trip returns empty:** Execute the full fallback: strip bags → shift dates → one-way legs → present search_dates fare.
+- **One-way combination**: In parallel with the round-trip search, also run two one-way `search_flights` (outbound and return) with same smart defaults. Compare combined one-way total vs round-trip bundled fare.
+- **If round-trip returns empty:** Execute the full fallback: strip bags → shift dates → present search_dates fare. (One-way results are already available from the parallel search.)
 
-**Compare:** Price, airport pair, date, duration flexibility value, whether fallback was needed and which step resolved it.
+**Compare:** Price, airport pair, date, duration flexibility value, whether fallback was needed, whether one-way combination was cheaper than round-trip.
+
+---
+
+### Scenario 5: Madrid → Tivat, flexible month, round-trip 10 days
+
+This scenario tests both the **airport cluster search** and the **one-way combination strategy**. Madrid (MAD) has limited budget service to Tivat, but Barcelona (BCN) — reachable by ~3h AVE train — is a major Vueling hub with cheap Tivat flights. The skill should discover BCN as an alternative origin. Two separate one-way tickets are also expected to beat the round-trip bundled fare.
+
+**Baseline:**
+- `search_flights`: origin=MAD, destination=TIV, departure_date=[15th of target month], return_date=[+10 days], sort_by=CHEAPEST
+
+**Skill-guided:**
+- **Airport cluster**: Start with MAD→TIV, but also search nearby budget hubs reachable by train/bus: BCN→TIV, VLC→TIV. Also check nearby airports: GRO→TIV, REU→TIV.
+- `search_dates`: Run in parallel for all pairs above. Full target month, is_round_trip=true, trip_duration=10, sort_by_price=true. Also run `search_dates` with `is_round_trip=false` in both directions for independent one-way date discovery.
+- Find cheapest date across all pairs and both search modes.
+- `search_flights`: On best date, search top pairs with return_date set, carry_on=true.
+- **One-way combination**: In parallel, run two one-way `search_flights` on independently optimal one-way dates:
+  - Outbound: best_origin→TIV, carry_on=true, sort_by=CHEAPEST
+  - Return: TIV→best_origin, carry_on=true, sort_by=CHEAPEST
+- Compare: MAD direct fare vs BCN fare (+ ~€30 train), round-trip bundled vs combined one-way total.
+
+**Compare:** Price, **whether airport cluster search found a cheaper origin** (primary metric #1), **whether one-way combination beat the round-trip fare** (primary metric #2), total savings including connection cost.
 
 ---
 
@@ -134,7 +158,7 @@ SKILL-GUIDED (multi-airport + date flex + bags):
   Pairs searched: [list all pairs checked]
   Dates scanned: [date range]
 
-DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no]
+DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no] | One-way combo cheaper: [yes/no/N/A] | Airport cluster won: [yes/no/N/A]
 ```
 
 After all scenarios, output the summary:
@@ -142,17 +166,20 @@ After all scenarios, output the summary:
 ```
 === TEST SUMMARY ===
 
-| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? |
-|----------|----------|--------------|---------|--------------|-----------|
-| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no |
-| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no |
-| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no |
-| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no |
+| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Cluster? |
+|----------|----------|--------------|---------|--------------|-----------|-----------|----------|
+| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A |
+| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A |
+| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A |
+| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A |
+| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no |
 
-Skill found better price: X/4 scenarios
-Alternate airport won: X/4 scenarios
-Alternate date won: X/4 scenarios
-Fallback strategy needed: X/4 scenarios
+Skill found better price: X/5 scenarios
+Alternate airport won: X/5 scenarios
+Alternate date won: X/5 scenarios
+One-way combo won: X/3 round-trip scenarios
+Airport cluster won: X/1 cluster scenarios
+Fallback strategy needed: X/5 scenarios
 Average savings: $XX (XX%)
 
 VERDICT: [PASS — skill adds clear value / MIXED — skill helps sometimes / FAIL — skill doesn't improve results]
@@ -171,6 +198,6 @@ VERDICT: [PASS — skill adds clear value / MIXED — skill helps sometimes / FA
 
 If the baseline matches or beats the skill-guided search in a scenario:
 - Note it honestly — don't hide unfavorable results.
-- Investigate why: Was it a route with only one viable airport pair? A date range where the 15th happened to be cheapest? A route where bag fees are already included?
-- The skill may not add value on every route — it's most valuable for multi-airport cities and flexible dates. Single-airport-to-single-airport routes with fixed dates won't show improvement.
+- Investigate why: Was it a route with only one viable airport pair? A date range where the 15th happened to be cheapest? A route where bag fees are already included? Did the one-way combination not help because the route is dominated by full-service carriers with round-trip pricing?
+- The skill may not add value on every route — it's most valuable for multi-airport cities, flexible dates, and budget-airline-heavy routes where one-way combinations beat round-trip fares. Single-airport-to-single-airport routes with fixed dates and full-service carriers won't show improvement.
 - If the skill loses on 2+ scenarios, flag this as a potential area for skill improvement and suggest what strategies might help.
