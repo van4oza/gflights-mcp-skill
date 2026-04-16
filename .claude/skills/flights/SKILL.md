@@ -42,11 +42,15 @@ Only ask about what's missing from the user's message — don't re-ask what they
 When the user has flexible dates:
 
 1. **First**, use `search_dates` with `sort_by_price: true` to find the cheapest dates across the range.
-2. Identify the best price clusters (cheapest days, best value windows).
-3. **Then** use `search_flights` on the top 2-3 candidate dates to get actual flight options.
-4. **For round-trip queries**, also run one-way outbound + return searches in parallel with the round-trip `search_flights` calls (see **One-Way Combination Strategy** below).
+2. **For round-trip queries**, also run `search_dates` with `is_round_trip: false` in both directions (origin→dest and dest→origin) in parallel to discover independently optimal one-way dates. These often differ from the best round-trip dates — the cheapest one-way outbound might be Tuesday while the cheapest round-trip departs Friday.
+3. Identify the best price clusters for both round-trip and one-way dates.
+4. **Then** use `search_flights` on the top 2-3 candidate dates. For round trips, launch all of these in parallel:
+   - Round-trip `search_flights` on the best round-trip dates
+   - One-way outbound `search_flights` on the best one-way outbound dates
+   - One-way return `search_flights` on the best one-way return dates
+   (See **One-Way Combination Strategy** below for full details.)
 
-When dates are fixed, skip straight to `search_flights` (plus parallel one-way searches for round trips).
+When dates are fixed, skip straight to `search_flights` (plus parallel one-way searches on the same dates for round trips).
 
 **Variable trip lengths:** When the user gives a range (e.g. "2-4 weeks"), run `search_dates` in parallel for each candidate duration (14, 21, 28 days). Present results grouped by duration — the cheapest trip length may not be the shortest or longest. In testing, a 3-week trip was €115+ cheaper than 2 weeks on the same route.
 
@@ -147,11 +151,15 @@ Based on the results, proactively advise the user:
 
 For every round-trip search, **always search one-way combinations in parallel** with the round-trip search. Budget airlines (Vueling, Ryanair, Transavia, easyJet, Wizz Air, etc.) frequently price two separate one-way tickets much cheaper than a bundled round-trip fare — savings of 50-70% are common on intra-European and short-haul routes.
 
-**How to execute:** When you run `search_flights` with a `return_date` for a round-trip, simultaneously launch two additional one-way `search_flights` calls (without `return_date`):
-1. **Outbound one-way**: same origin, destination, and departure date
-2. **Return one-way**: origin and destination swapped, departure date = the return date
+**How to execute:** For every round-trip query, launch these searches in parallel:
 
-Apply the same smart defaults (`carry_on`, `checked_bags`, etc.) to all three searches. All three calls should be launched in parallel — this adds no extra latency.
+1. **Round-trip bundled**: `search_flights` with `return_date` set (the standard round-trip search)
+2. **Outbound one-way**: `search_flights` without `return_date`, same origin/destination/departure date
+3. **Return one-way**: `search_flights` without `return_date`, origin and destination swapped, departure date = the return date
+
+**When dates are flexible**, use independently optimal dates for the one-way searches — don't just reuse the round-trip dates. Run `search_dates` with `is_round_trip: false` in both directions to discover the cheapest one-way dates, which may differ from the best round-trip dates. Then combine the cheapest outbound one-way (on its optimal date) + cheapest return one-way (on its optimal date).
+
+Apply the same smart defaults (`carry_on`, `checked_bags`, etc.) to all searches. All calls should be launched in parallel — this adds no extra latency.
 
 **When to highlight the one-way combination:**
 - Always present both options when the combined one-way total differs from the round-trip fare
