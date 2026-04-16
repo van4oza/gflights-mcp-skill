@@ -30,6 +30,10 @@ Dev skills live in `dev/skills/` (not `.claude/skills/`) so users who clone the 
 
 Skills in `.claude/skills/` only work in Claude Code. For Desktop chat / Dispatch mode, `install.sh` packages `dist/flights.skill` (a ZIP) for upload via Customize → Skills. Desktop also needs fli-mcp configured in `claude_desktop_config.json`.
 
+## Sub-agent execution model
+
+The `/flights` skill uses parallel sub-agents (via the Agent tool) for broad searches. When 3+ origin airports need searching (user's city + nearby budget hubs), one Agent is spawned per origin. Each agent searches independently and returns its best results; the main assistant compiles everything into a unified comparison. For 1-2 origins, parallel tool calls are used directly without agents.
+
 ## Known fli MCP quirks
 
 - `search_flights` with `return_date` sometimes returns empty for dates that `search_dates` confirmed. The flights skill has a 4-step fallback (strip bags → shift dates → one-way legs → present search_dates fare).

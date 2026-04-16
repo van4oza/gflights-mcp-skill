@@ -26,6 +26,7 @@ How someone would use the MCP tools without the skill:
 ### Skill-guided (following /flights strategy)
 How the skill instructs searches:
 - Multiple origin and destination airports in parallel, including **airport cluster** cities reachable by train/bus/short flight (e.g. for Madrid, also check Barcelona and Valencia as budget airline hubs)
+- **Sub-agent execution**: When 3+ origin airports are identified, use the Agent tool to spawn one agent per origin airport. Each agent independently runs its searches and returns top results. For 1-2 origins, use parallel tool calls directly.
 - `search_dates` first (with `sort_by_price: true`) to find cheapest date window, plus `search_dates` with `is_round_trip: false` in both directions for independent one-way date discovery
 - `search_flights` on the best 1-2 dates with smart defaults applied:
   - `carry_on: true` (always — normalizes pricing, filters basic economy on US domestic)
@@ -119,15 +120,14 @@ This scenario tests both the **airport cluster search** and the **one-way combin
 
 **Skill-guided:**
 - **Airport cluster**: Start with MAD→TIV, but also search nearby budget hubs reachable by train/bus: BCN→TIV, VLC→TIV. Also check nearby airports: GRO→TIV, REU→TIV.
-- `search_dates`: Run in parallel for all pairs above. Full target month, is_round_trip=true, trip_duration=10, sort_by_price=true. Also run `search_dates` with `is_round_trip=false` in both directions for independent one-way date discovery.
-- Find cheapest date across all pairs and both search modes.
-- `search_flights`: On best date, search top pairs with return_date set, carry_on=true.
-- **One-way combination**: In parallel, run two one-way `search_flights` on independently optimal one-way dates:
-  - Outbound: best_origin→TIV, carry_on=true, sort_by=CHEAPEST
-  - Return: TIV→best_origin, carry_on=true, sort_by=CHEAPEST
-- Compare: MAD direct fare vs BCN fare (+ ~€30 train), round-trip bundled vs combined one-way total.
+- **Sub-agent execution**: With 3+ origin airports (MAD, BCN, VLC, plus optionally GRO/REU), spawn one Agent per origin. Each agent independently runs `search_dates` and `search_flights` for its origin, including one-way combinations. This tests that the sub-agent model actually produces broader results than a single-threaded search.
+- `search_dates`: Each agent runs these in parallel for its pairs. Full target month, is_round_trip=true, trip_duration=10, sort_by_price=true. Also `search_dates` with `is_round_trip=false` in both directions.
+- Find cheapest date across all agents' results.
+- `search_flights`: Each agent searches its best date with return_date set, carry_on=true.
+- **One-way combination**: Each agent also runs one-way outbound + return searches on independently optimal dates.
+- **Compile**: Main assistant merges all agent results. Compare MAD direct fare vs BCN fare (+ ~€30 train), round-trip bundled vs combined one-way total.
 
-**Compare:** Price, **whether airport cluster search found a cheaper origin** (primary metric #1), **whether one-way combination beat the round-trip fare** (primary metric #2), total savings including connection cost.
+**Compare:** Price, **whether airport cluster search found a cheaper origin** (primary metric #1), **whether one-way combination beat the round-trip fare** (primary metric #2), **whether sub-agent execution covered more airports than a non-agent approach would have** (primary metric #3), total savings including connection cost.
 
 ---
 
@@ -158,7 +158,7 @@ SKILL-GUIDED (multi-airport + date flex + bags):
   Pairs searched: [list all pairs checked]
   Dates scanned: [date range]
 
-DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no] | One-way combo cheaper: [yes/no/N/A] | Airport cluster won: [yes/no/N/A]
+DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no] | One-way combo cheaper: [yes/no/N/A] | Airport cluster won: [yes/no/N/A] | Sub-agents used: [yes/no]
 ```
 
 After all scenarios, output the summary:
@@ -166,19 +166,20 @@ After all scenarios, output the summary:
 ```
 === TEST SUMMARY ===
 
-| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Cluster? |
-|----------|----------|--------------|---------|--------------|-----------|-----------|----------|
-| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A |
-| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A |
-| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A |
-| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A |
-| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no |
+| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Cluster? | Sub-agents? |
+|----------|----------|--------------|---------|--------------|-----------|-----------|----------|-------------|
+| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | yes/no |
+| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | yes/no |
+| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | yes/no |
+| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | yes/no |
+| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes |
 
 Skill found better price: X/5 scenarios
 Alternate airport won: X/5 scenarios
 Alternate date won: X/5 scenarios
 One-way combo won: X/3 round-trip scenarios
 Airport cluster won: X/1 cluster scenarios
+Sub-agents used: X/5 scenarios (expected for scenarios with 3+ origins)
 Fallback strategy needed: X/5 scenarios
 Average savings: $XX (XX%)
 
