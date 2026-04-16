@@ -35,6 +35,15 @@ Only ask about what's missing from the user's message — don't re-ask what they
 
 - If the user says a city, use your knowledge of airport geography to identify **all viable airports** — the main hub(s) plus any secondary airports within reasonable ground-transport distance (1-2 hours). Many cities have secondary airports that serve low-cost carriers with significantly cheaper fares (e.g. London has 4+ airports, Moscow has 3, the NYC area has 3). Always search at least 2-3 airports for major cities.
 
+- **Think in airport clusters, not just single cities.** For intra-European, intra-Asian, and short-haul routes, also search major nearby cities reachable by train or short connecting flight — especially budget airline hubs. Examples:
+  - Madrid → also check **Barcelona** (BCN) and **Valencia** (VLC) — major Vueling/Ryanair hubs
+  - Paris → also check **Brussels** (BRU/CRL) and **Amsterdam** (AMS) — Ryanair/easyJet/Transavia hubs
+  - Milan → also check **Bergamo** (BGY) — Ryanair's biggest Italian base
+  - London → also check **Paris** (if Eurostar connects easily)
+  - Tokyo → also check **Osaka** (KIX) if the trip allows it
+  
+  This is especially valuable when the user's origin city has limited budget carrier service to the destination. A €30 train + €40 budget flight can easily beat a €200 direct flight from the main hub. When suggesting alternative origin cities, always note the extra connection and its approximate cost/time.
+
 - Search **multiple origin-destination pairs in parallel** when applicable. Launch parallel tool calls for different airport combinations.
 
 ### 3. Use Date Flexibility
