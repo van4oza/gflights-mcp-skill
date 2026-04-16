@@ -32,7 +32,13 @@ Skills in `.claude/skills/` only work in Claude Code. For Desktop chat / Dispatc
 
 ## Sub-agent execution model
 
-The `/flights` skill uses parallel sub-agents (via the Agent tool) for broad searches. When 3+ origin airports need searching (user's city + nearby budget hubs), one Agent is spawned per origin. Each agent searches independently and returns its best results; the main assistant compiles everything into a unified comparison. For 1-2 origins, parallel tool calls are used directly without agents.
+The `/flights` skill uses a two-phase scout→detail architecture for broad searches:
+
+1. **Scout phase**: main assistant runs `search_dates` across all origin×destination pairs in parallel to build a price map and eliminate dead-end routes.
+2. **Detail phase**: when 3+ viable origins remain, one Agent is spawned per origin. Each agent gets scout intelligence (best dates, price levels) and searches `search_flights` with full details. For 1-2 origins, parallel tool calls are used directly without agents.
+3. **Compile phase**: main assistant deduplicates results, adds connection costs, tags confidence levels, and ranks by true total cost.
+
+Both origin AND destination airports are clustered (nearby budget hubs, secondary airports, regional alternatives). The scout phase makes this matrix search cheap.
 
 ## Known fli MCP quirks
 
