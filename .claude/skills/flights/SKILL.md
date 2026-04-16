@@ -35,14 +35,15 @@ Only ask about what's missing from the user's message — don't re-ask what they
 
 - If the user says a city, use your knowledge of airport geography to identify **all viable airports** — the main hub(s) plus any secondary airports within reasonable ground-transport distance (1-2 hours). Many cities have secondary airports that serve low-cost carriers with significantly cheaper fares (e.g. London has 4+ airports, Moscow has 3, the NYC area has 3). Always search at least 2-3 airports for major cities.
 
-- **Think in airport clusters, not just single cities.** For intra-European, intra-Asian, and short-haul routes, also search major nearby cities reachable by train or short connecting flight — especially budget airline hubs. Examples:
-  - Madrid → also check **Barcelona** (BCN) and **Valencia** (VLC) — major Vueling/Ryanair hubs
-  - Paris → also check **Brussels** (BRU/CRL) and **Amsterdam** (AMS) — Ryanair/easyJet/Transavia hubs
-  - Milan → also check **Bergamo** (BGY) — Ryanair's biggest Italian base
-  - London → also check **Paris** (if Eurostar connects easily)
-  - Tokyo → also check **Osaka** (KIX) if the trip allows it
-  
-  This is especially valuable when the user's origin city has limited budget carrier service to the destination. A €30 train + €40 budget flight can easily beat a €200 direct flight from the main hub. When suggesting alternative origin cities, always note the extra connection and its approximate cost/time.
+- **Think in airport clusters, not just single cities.** Use your knowledge of transport geography to identify nearby cities that are conveniently reachable and may offer cheaper flights — especially budget airline hubs. Consider all fast surface transport:
+  - **High-speed rail**: AVE (Spain), TGV (France), Eurostar (UK–continent), Thalys (Benelux–France–Germany), ICE (Germany), Frecciarossa (Italy), Shinkansen (Japan), KTX (Korea)
+  - **Buses / coaches**: FlixBus, Ouibus, Megabus, National Express — often connect cities 2-4 hours apart for under €20
+  - **Ferries**: relevant for Baltic, Mediterranean, Greek islands, Southeast Asia
+  - **Short domestic/regional flights**: when a €30-50 connecting flight to a budget hub saves hundreds on the main route
+
+  The principle: a cheap connection to a budget airline hub can easily beat an expensive direct flight from the user's city. For example, Madrid has limited budget service to Montenegro, but a €30 train to Barcelona + €40 Vueling flight to Tivat = €70 total vs €200+ direct from MAD.
+
+  **How to apply this**: For every search, ask yourself — "Is there a major budget airline hub within ~3 hours by train/bus/short flight that serves this destination better?" If yes, search it in parallel. When presenting results from an alternative city, always note the extra connection, its approximate cost, and travel time so the user can judge the total trip cost and convenience.
 
 - Search **multiple origin-destination pairs in parallel** when applicable. Launch parallel tool calls for different airport combinations.
 
