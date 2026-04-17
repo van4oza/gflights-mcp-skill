@@ -30,6 +30,8 @@ Use scout results to:
 
 For flexible dates, run both round-trip and one-way `search_dates` scouts in both directions. This surfaces independently optimal one-way dates that round-trip scouting misses.
 
+**Duration sweep for flexible trip lengths**: when the user gives a trip-length range (e.g. "2–4 weeks"), include multiple `trip_duration` values in the scout burst — e.g. 14, 21, 28 in parallel per pair. Duration is often a bigger savings lever than specific dates: a 3-week trip can be €100+ cheaper than 2 weeks on the same route. Pick the winning duration per origin from scout results before detail agents drill in.
+
 ### Phase 2 — Detail (parallel sub-agents for viable origins)
 
 **When to use sub-agents vs. direct tool calls:**
@@ -49,17 +51,18 @@ For flexible dates, run both round-trip and one-way `search_dates` scouts in bot
 - All `search_flights` calls (round-trip + one-way outbound + one-way return + multiple sort types) in a **single message**
 - Never run sequential calls where parallel ones are possible — this is the single biggest performance lever within each agent
 
-**Launch ALL agents in a single message** — they execute in parallel, adding no extra wall-clock time compared to searching one origin.
+**Launch ALL agents in a single message** — they run in parallel, which keeps added wall-clock time small compared to searching origins sequentially. Actual latency depends on MCP server throughput and agent orchestration, so the win is largest when the hub cap (below) keeps the fan-out bounded.
 
 ### Phase 3 — Compile and rank
 
 When all agents return:
 
-1. **Deduplicate** — multiple agents may find the same flight via different search paths (e.g. a connecting flight through a hub). Remove duplicates, keeping the version with the most detail.
+1. **Deduplicate** — multiple agents may find the same flight via different search paths. Dedup key per leg is `airline_code + flight_number + departure_date`; for multi-leg itineraries, concatenate leg keys with `|`. When two entries share the key but carry different connection prefixes from different origin clusters (e.g. Madrid→BCN→TIV vs starting-at-BCN→TIV), keep both — they represent different trips and should be labeled distinctly. When deduplicating genuine duplicates, keep the entry with the most detail (layover airport, terminal, aircraft) and the lower confirmed price.
 2. **Calculate true totals** — for hub-origin results, add connection cost (train/bus/flight to hub). For one-way combinations, sum outbound + return.
 3. **Tag confidence** — label each result: "confirmed fare (flight search)" for results from `search_flights`, or "indicative fare (date search)" for prices only found via `search_dates`.
-4. **Rank by true total cost** — sort all options across all origins by actual total the user would pay, including connections.
-5. **Present unified comparison** — highlight the overall winner and the best option from each origin that was searched.
+4. **Resolve tag conflicts** — when scout and detail both produced fares for the same route-date, the detail fare wins (flight-level accuracy beats date-level estimate), even if the scout fare is lower. If detail couldn't resolve the itinerary at all, present the scout fare with the "indicative" tag and direct the user to book via Google Flights with those exact dates (see **Round-Trip Fallback Strategy** below).
+5. **Rank by true total cost** — sort all options across all origins by actual total the user would pay, including connection costs. Break ties by confidence (confirmed > indicative), then by fewer stops, then by shorter total travel time.
+6. **Present unified comparison** — highlight the overall winner and the best option from each origin that was searched.
 
 ## Core Workflow
 
@@ -92,9 +95,13 @@ Only ask about what's missing from the user's message — don't re-ask what they
 
   The principle: a cheap connection to a budget airline hub can easily beat an expensive direct flight from the user's city. For example, Madrid has limited budget service to Montenegro, but a €30 train to Barcelona + €40 Vueling flight to Tivat = €70 total vs €200+ direct from MAD.
 
-  **How to apply this**: For every search, identify ALL budget airline hubs within ~3 hours of the user's origin by fast surface transport or short connecting flight. Use your knowledge of airline geography — you know which cities are major bases for Ryanair, easyJet, Wizz Air, Vueling, Norwegian, Pegasus, AirAsia, IndiGo, and other low-cost carriers relevant to the route. Always search these hubs alongside the user's stated origin. Don't evaluate whether checking a hub "makes sense" — search it and let the prices decide. The search cost is trivial; missing a major saving is not.
+  **How to apply this**: For every search, identify candidate budget airline hubs within ~3 hours of the user's origin by fast surface transport or short connecting flight. Use your knowledge of airline geography — you know which cities are major bases for Ryanair, easyJet, Wizz Air, Vueling, Norwegian, Pegasus, AirAsia, IndiGo, and other low-cost carriers relevant to the route.
 
-  When 3+ origin airports are identified, use the two-phase execution model (see above): scout all pairs first with `search_dates`, then spawn detail agents only for viable origins.
+  **Rank and cap**: score each candidate by `(relevant LCC presence on this destination) × (schedule frequency) × (low transport friction from the user's city: time + cost)` and take the **top 3 hubs** alongside the user's stated origin. Search the top 3; don't fan out further unless they all come back empty. This keeps the origin×destination×search-type matrix bounded — the scout phase is only cheap when capped, and over-spawning reintroduces the same tool-call-limit risk that dropped airports in the first place. Within the cap, don't second-guess whether a hub "makes sense"; let prices decide.
+
+  **Escalation**: if all top-3 hubs return empty scout results for every destination, probe the next 2 ranked candidates before falling back to the stated origin alone.
+
+  When 3+ origin airports remain after ranking, use the two-phase execution model (see above): scout all pairs first with `search_dates`, then spawn detail agents only for viable origins.
 
 - **Cluster destinations too, not just origins.** Apply the same logic to the destination side:
   - A city name → all airports serving that city and its metropolitan area (e.g. "London" → LHR, LGW, STN, LTN, SEN)
@@ -110,15 +117,10 @@ Only ask about what's missing from the user's message — don't re-ask what they
 When the user has flexible dates:
 
 1. **First**, use `search_dates` with `sort_by_price: true` to find the cheapest dates across the range.
-2. **For round-trip queries**, also run `search_dates` with `is_round_trip: false` in both directions (origin→dest and dest→origin) in parallel to discover independently optimal one-way dates. These often differ from the best round-trip dates — the cheapest one-way outbound might be Tuesday while the cheapest round-trip departs Friday.
-3. Identify the best price clusters for both round-trip and one-way dates.
-4. **Then** use `search_flights` on the top 2-3 candidate dates. For round trips, launch all of these in parallel:
-   - Round-trip `search_flights` on the best round-trip dates
-   - One-way outbound `search_flights` on the best one-way outbound dates
-   - One-way return `search_flights` on the best one-way return dates
-   (See **One-Way Combination Strategy** below for full details.)
+2. **For round-trip queries**, also run `search_dates` with `is_round_trip: false` in both directions in parallel to discover independently optimal one-way dates — these often differ from the best round-trip dates (e.g. cheapest outbound on Tuesday while cheapest round-trip departs Friday).
+3. **Then** use `search_flights` on the top 2-3 candidate dates. For round trips, launch round-trip + one-way outbound + one-way return searches in parallel — see the canonical **[One-Way Combination Strategy](#one-way-combination-strategy)** section below for the full execution template, warnings, and presentation rules.
 
-When dates are fixed, skip straight to `search_flights` (plus parallel one-way searches on the same dates for round trips).
+When dates are fixed, skip straight to `search_flights` (plus parallel one-way searches on the same dates for round trips — same canonical section).
 
 **Variable trip lengths:** When the user gives a range (e.g. "2-4 weeks"), run `search_dates` in parallel for each candidate duration (14, 21, 28 days). Present results grouped by duration — the cheapest trip length may not be the shortest or longest. In testing, a 3-week trip was €115+ cheaper than 2 weeks on the same route.
 
@@ -234,7 +236,7 @@ For every round-trip search, **always search one-way combinations in parallel** 
 
 **When dates are flexible**, use independently optimal dates for the one-way searches — don't just reuse the round-trip dates. Run `search_dates` with `is_round_trip: false` in both directions to discover the cheapest one-way dates, which may differ from the best round-trip dates. Then combine the cheapest outbound one-way (on its optimal date) + cheapest return one-way (on its optimal date).
 
-Apply the same smart defaults (`carry_on`, `checked_bags`, etc.) to all searches. All calls should be launched in parallel — this adds no extra latency.
+Apply the same smart defaults (`carry_on`, `checked_bags`, etc.) to all searches. All calls should be launched in parallel — this keeps added latency minimal (exact overhead depends on MCP throughput and concurrent contention).
 
 **When to highlight the one-way combination:**
 - Always present both options when the combined one-way total differs from the round-trip fare

@@ -127,7 +127,7 @@ This scenario tests both the **airport cluster search** and the **one-way combin
 - **One-way combination**: Each agent also runs one-way outbound + return searches on independently optimal dates.
 - **Compile**: Main assistant merges all agent results. Compare MAD direct fare vs BCN fare (+ ~€30 train), round-trip bundled vs combined one-way total.
 
-**Compare:** Price, **whether airport cluster search found a cheaper origin** (primary metric #1), **whether one-way combination beat the round-trip fare** (primary metric #2), **whether sub-agent execution covered more airports than a non-agent approach would have** (primary metric #3), total savings including connection cost.
+**Compare:** Price, **whether airport cluster search found a cheaper origin** (primary metric #1), **whether one-way combination beat the round-trip fare** (primary metric #2), **count of distinct origin airports actually searched** — the concrete validation that the sub-agent model didn't silently drop airports; count origins where at least one `search_dates` or `search_flights` call returned non-empty results (primary metric #3), total savings including connection cost.
 
 ---
 
@@ -146,33 +146,34 @@ If a health check fails, mark that scenario as INCONCLUSIVE (MCP issue, not skil
 
 For each scenario, output:
 
-```
+```text
 === Scenario N: [description] ===
 
 BASELINE (naive single search):
   Route: [origin] → [dest] | Date: [date] | Cheapest: $XXX
-  Bag-inclusive estimate: ~$XXX + $70 bag = ~$XXX
+  Origins searched: 1 | Bag-inclusive estimate: ~$XXX + $70 bag = ~$XXX
 
 SKILL-GUIDED (multi-airport + date flex + bags):
   Best route: [origin] → [dest] | Best date: [date] | Cheapest: $XXX (bags included)
   Pairs searched: [list all pairs checked]
+  Origins searched: N (count of origins where at least one call returned non-empty results)
   Dates scanned: [date range]
 
-DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no] | One-way combo cheaper: [yes/no/N/A] | Airport cluster won: [yes/no/N/A] | Sub-agents used: [yes/no]
+DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no] | One-way combo cheaper: [yes/no/N/A] | Airport cluster won: [yes/no/N/A] | Sub-agents used: [yes/no] | Origins searched (baseline/skill): 1/N
 ```
 
 After all scenarios, output the summary:
 
-```
+```text
 === TEST SUMMARY ===
 
-| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Cluster? | Sub-agents? |
-|----------|----------|--------------|---------|--------------|-----------|-----------|----------|-------------|
-| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | yes/no |
-| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | yes/no |
-| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | yes/no |
-| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | yes/no |
-| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes |
+| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Cluster? | Sub-agents? | Origins (base/skill) |
+|----------|----------|--------------|---------|--------------|-----------|-----------|----------|-------------|----------------------|
+| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | yes/no | 1/N |
+| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | yes/no | 1/N |
+| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | yes/no | 1/N |
+| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | yes/no | 1/N |
+| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes | 1/N |
 
 Skill found better price: X/5 scenarios
 Alternate airport won: X/5 scenarios
@@ -180,6 +181,7 @@ Alternate date won: X/5 scenarios
 One-way combo won: X/3 round-trip scenarios
 Airport cluster won: X/1 cluster scenarios
 Sub-agents used: X/5 scenarios (expected for scenarios with 3+ origins)
+Total distinct origins searched (skill-guided, across all scenarios): N
 Fallback strategy needed: X/5 scenarios
 Average savings: $XX (XX%)
 
