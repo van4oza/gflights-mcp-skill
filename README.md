@@ -7,9 +7,12 @@ A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that turns
 Type `/flights` in Claude Code and describe your trip. The skill will:
 
 - **Search broadly** across multiple airports for your city (e.g. JFK + EWR + LGA for "New York") in parallel
+- **Check nearby budget hubs** — automatically identifies low-cost carrier hubs within ~3 hours and searches them alongside your city (e.g. checking Barcelona when you're in Madrid)
+- **Use parallel sub-agents** for deep searches — when 3+ origin airports are involved, spawns one Agent per origin for true parallel execution without dropping airports
 - **Find the cheapest dates** when you're flexible, then drill into the best options
 - **Normalize fares** by including bag costs, flagging basic economy traps, and warning about self-transfers
 - **Compare "Best" vs "Cheapest"** so you see the quality-price tradeoff
+- **Show connection cost breakdowns** when a budget hub beats a direct flight, including transport cost and total savings
 - **Advise on booking** — book direct with the airline, verify checkout prices, watch for OTA pitfalls
 
 ### Example
@@ -166,6 +169,8 @@ The skill combines two things:
 ## Key search strategies (from the playbook)
 
 - **Search multiple airports**: The biggest savings lever. A $900 difference was reported just by checking alternate airports for the same city.
+- **Always check nearby budget hubs**: The skill uses LLM knowledge of airline geography to identify low-cost carrier hubs within ~3 hours of your city and searches them automatically. A cheap train + budget flight often beats an expensive direct flight.
+- **Parallel sub-agents for scale**: When 3+ origin airports need searching, the skill spawns one Agent per origin for true parallel execution. No airports get skipped under cognitive load.
 - **Use date flexibility before filtering**: Find the cheapest date window first, then apply airline/time/stop filters.
 - **Normalize with bags**: A "cheap" fare with no bags often costs more than a "pricier" fare that includes them. The skill uses bag-inclusive pricing.
 - **Compare Best vs Cheapest**: If the gap is small, pick the cleaner itinerary. If large, inspect what you're giving up (self-transfer, overnight layover, OTA booking).
