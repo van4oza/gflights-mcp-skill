@@ -50,3 +50,12 @@ Both origin AND destination airports are clustered (nearby budget hubs, secondar
 ## Update workflow
 
 `/update-playbook` researches the web and updates the playbook, flights skill, AND test-flights scenarios together — keep all three in sync when making changes manually too.
+
+## After merging to main
+
+Whenever `main` is updated (e.g., after a PR merge), re-run `./install.sh` from the canonical repo (`~/.cyrus/repos/gflights-mcp-skill/`) to:
+
+1. Rebuild `dist/flights.skill` (the Desktop upload zip) from the fresh `main` content.
+2. Repoint/verify the Claude Code symlink (`~/.claude/skills/flights`) and the Claude Desktop symlink (under `skills-plugin/*/*/skills/flights/`) so both surfaces serve the updated skill.
+
+The script is idempotent — safe to run every time. Verify with `shasum` that the three `SKILL.md` copies (repo, `~/.claude/skills/flights/`, Desktop extraction path) all match.
