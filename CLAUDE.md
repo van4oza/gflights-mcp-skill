@@ -30,6 +30,8 @@ Dev skills live in `dev/skills/` (not `.claude/skills/`) so users who clone the 
 
 Skills in `.claude/skills/` only work in Claude Code. For Desktop chat / Dispatch mode, `install.sh` packages `dist/flights.skill` (a ZIP) for upload via Customize → Skills. Desktop also needs fli-mcp configured in `claude_desktop_config.json`.
 
+Once Desktop has extracted the zip (under `~/Library/Application Support/Claude/local-agent-mode-sessions/skills-plugin/*/*/skills/flights/`), re-running `install.sh` replaces the extracted folder with a symlink to `.claude/skills/flights` so repo edits are live without re-uploading. Prior extractions are backed up under `~/.cache/gflights-mcp-skill/`. Desktop may re-extract on launch — if `/flights` reverts to stale content, re-run `install.sh`.
+
 ## Sub-agent execution model
 
 The `/flights` skill uses a two-phase scout→detail architecture for broad searches:
