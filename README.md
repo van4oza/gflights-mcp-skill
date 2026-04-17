@@ -108,15 +108,17 @@ If you use **Claude Desktop**, add to `~/Library/Application Support/Claude/clau
 
 ### 4. Install skills for Claude Desktop / Dispatch / Chat (optional)
 
-Skills in `.claude/skills/` only work in Claude Code's terminal mode. To use them in **Claude Desktop chat** or **Dispatch mode**, upload the `.skill` packages:
+Skills in `.claude/skills/` only work in Claude Code's terminal mode. To use them in **Claude Desktop chat** or **Dispatch mode**, first upload the `.skill` package once so Desktop registers it, then re-run `install.sh` to replace the extracted copy with a symlink to this repo:
 
 ```bash
-./install.sh  # builds .skill files in dist/
+./install.sh  # builds dist/flights.skill
 ```
 
-Then in Claude Desktop:
-1. Open **Customize > Skills**
+1. Open **Customize > Skills** in Claude Desktop
 2. Upload `dist/flights.skill`
+3. Re-run `./install.sh` — it auto-detects the extracted folder and replaces it with a symlink to `.claude/skills/flights`, so edits to the repo are live (any prior extraction is backed up under `~/.cache/gflights-mcp-skill/`).
+
+If Claude Desktop ever re-extracts the zip on launch, re-run `./install.sh` to restore the symlink.
 
 Note: `/flights` requires the fli MCP server to be configured in Claude Desktop too (see step 3 above).
 

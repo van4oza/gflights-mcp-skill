@@ -4,6 +4,7 @@ set -e
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 USER_SKILLS_DIR="$HOME/.claude/skills"
 DIST_DIR="$REPO_DIR/dist"
+DESKTOP_SKILLS_ROOT="$HOME/Library/Application Support/Claude/local-agent-mode-sessions/skills-plugin"
 DEV_MODE=false
 UNINSTALL=false
 
@@ -30,6 +31,16 @@ if [ "$UNINSTALL" = true ]; then
             echo "[ok] removed symlink $USER_SKILLS_DIR/$name"
         fi
     done
+    if [ -d "$DESKTOP_SKILLS_ROOT" ]; then
+        # Remove any Desktop flights symlinks that point into this repo
+        while IFS= read -r -d '' link; do
+            target="$(readlink "$link")"
+            if [ "$target" = "$REPO_DIR/.claude/skills/flights" ]; then
+                rm "$link"
+                echo "[ok] removed Claude Desktop symlink $link"
+            fi
+        done < <(find "$DESKTOP_SKILLS_ROOT" -mindepth 4 -maxdepth 4 -name flights -type l -print0 2>/dev/null)
+    fi
     if [ -d "$DIST_DIR" ]; then
         rm -rf "$DIST_DIR"
         echo "[ok] removed $DIST_DIR"
@@ -59,17 +70,26 @@ else
     echo "[ok] fli-mcp installed"
 fi
 
-# Helper: symlink a skill, report if already present
+# Helper: symlink a skill. Repoints stale symlinks to the current repo.
 link_skill() {
     local name="$1"
     local src="$2"
-    if [ -L "$USER_SKILLS_DIR/$name" ]; then
-        echo "[ok] $name — symlink already exists"
-    elif [ -d "$USER_SKILLS_DIR/$name" ]; then
-        echo "[!!] $name — $USER_SKILLS_DIR/$name already exists (not a symlink). Skipping."
+    local dest="$USER_SKILLS_DIR/$name"
+    if [ -L "$dest" ]; then
+        local existing
+        existing="$(readlink "$dest")"
+        if [ "$existing" = "$src" ]; then
+            echo "[ok] $name — symlink already points to $src"
+            return
+        fi
+        rm "$dest"
+        ln -s "$src" "$dest"
+        echo "[ok] $name — repointed symlink ($existing → $src)"
+    elif [ -d "$dest" ]; then
+        echo "[!!] $name — $dest already exists (not a symlink). Skipping."
     else
-        ln -s "$src" "$USER_SKILLS_DIR/$name"
-        echo "[ok] $name — linked to $USER_SKILLS_DIR/$name"
+        ln -s "$src" "$dest"
+        echo "[ok] $name — linked to $dest"
     fi
 }
 
@@ -87,7 +107,7 @@ if [ "$DEV_MODE" = true ]; then
     link_skill "update-playbook" "$REPO_DIR/dev/skills/update-playbook"
 fi
 
-# 3. Build .skill package (for Claude Desktop / Dispatch / Chat)
+# 3. Build .skill package (for first-time Claude Desktop upload)
 echo ""
 echo "--- Claude Desktop / Dispatch / Chat ---"
 mkdir -p "$DIST_DIR"
@@ -95,10 +115,43 @@ mkdir -p "$DIST_DIR"
 (cd "$REPO_DIR/.claude/skills/flights" && zip -j "$DIST_DIR/flights.skill" SKILL.md) > /dev/null 2>&1
 echo "[ok] flights.skill — built in dist/"
 
+# 3b. If the user has already uploaded a flights skill to Claude Desktop,
+# replace the extracted folder with a symlink to this repo so edits are live.
+DESKTOP_LINK_COUNT=0
+if [ -d "$DESKTOP_SKILLS_ROOT" ]; then
+    while IFS= read -r -d '' extracted; do
+        target="$REPO_DIR/.claude/skills/flights"
+        if [ -L "$extracted" ]; then
+            if [ "$(readlink "$extracted")" = "$target" ]; then
+                echo "[ok] Claude Desktop flights — symlink already points to repo ($extracted)"
+                DESKTOP_LINK_COUNT=$((DESKTOP_LINK_COUNT + 1))
+                continue
+            fi
+            rm "$extracted"
+        else
+            backup="$HOME/.cache/gflights-mcp-skill/desktop-backup-$(date +%Y%m%d-%H%M%S)"
+            mkdir -p "$backup"
+            mv "$extracted" "$backup/"
+            echo "[ok] Backed up prior extraction to $backup"
+        fi
+        ln -s "$target" "$extracted"
+        echo "[ok] Claude Desktop flights — linked $extracted → $target"
+        DESKTOP_LINK_COUNT=$((DESKTOP_LINK_COUNT + 1))
+    done < <(find "$DESKTOP_SKILLS_ROOT" -mindepth 4 -maxdepth 4 -name flights -print0 2>/dev/null)
+fi
+
 echo ""
-echo "  To use in Claude Desktop chat / Dispatch mode:"
-echo "  1. Open Claude Desktop → Customize → Skills"
-echo "  2. Upload: $DIST_DIR/flights.skill"
+if [ "$DESKTOP_LINK_COUNT" -gt 0 ]; then
+    echo "  Claude Desktop will now read the skill directly from this repo."
+    echo "  Note: if Claude Desktop re-extracts the .skill zip on app launch, the"
+    echo "  symlink may be overwritten — re-run ./install.sh to restore it."
+else
+    echo "  No existing Claude Desktop upload detected."
+    echo "  To use in Claude Desktop chat / Dispatch mode:"
+    echo "  1. Open Claude Desktop → Customize → Skills"
+    echo "  2. Upload: $DIST_DIR/flights.skill"
+    echo "  3. Re-run ./install.sh to replace the extracted copy with a symlink."
+fi
 
 # 4. Check MCP config
 echo ""
