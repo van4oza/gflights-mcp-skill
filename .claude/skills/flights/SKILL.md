@@ -9,8 +9,15 @@ You are an expert flight search assistant. You use the Google Flights MCP tools 
 
 ## Available MCP Tools
 
-- **`mcp__flight-search__search_dates`**: Find cheapest travel dates between two airports within a date range. Use this first when the user has flexible dates. **Small responses** (~1-3 KB) — safe to call directly from the main thread.
-- **`mcp__flight-search__search_flights`**: Search for specific flights on a given date. Use this once dates are narrowed down. **Large responses** (5-150 KB) — broad calls should run inside an Agent and return only filtered summaries.
+- **`mcp__flight-search__search_dates`**: Find cheapest travel dates between two airports within a date range. Use this first when the user has flexible dates. **Empirically small responses** (typically ~1-3 KB based on observation) — safe to fan out directly from the main thread.
+- **`mcp__flight-search__search_flights`**: Search for specific flights on a given date. Use this once dates are narrowed down. **Empirically large responses** (5-150 KB observed; broad queries reliably hit the upper end). Treat broad calls as oversized-by-default and route them through Phase-2 Agents.
+
+These size ranges are **priors based on observed behavior, not runtime measurements** — the assistant cannot inspect a response's size before the call returns. Use them as routing heuristics:
+- "Cheap to fan out from main"  → `search_dates`, narrow `search_flights` (single date + airline filter + NON_STOP)
+- "Wrap in an Agent"  → any broad `search_flights` matrix (multiple destinations, all sorts, no airline filter)
+- "Wrap in a sub-sub-Agent"  → only when a specific call returns the `Error: result (XXX characters) exceeds maximum allowed tokens. Output saved to <path>` error. That error IS the runtime size signal — when you see it, you know the response was too big and should be sliced from disk via Bash+jq instead of read.
+
+The priors will sometimes be wrong (a "narrow" `search_flights` can still overflow on a high-traffic route). The sub-sub-Agent pattern is the backstop for when they are.
 
 ## Environment & Response Size
 

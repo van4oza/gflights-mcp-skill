@@ -144,7 +144,7 @@ The skill should:
 - **Origin cluster**: MAD (stated) + BCN (AVE ~2.5h, ~€30-50) + VLC (AVE ~1h40, ~€30).
 - **Destination cluster**: TIV (primary) + DBV (Dubrovnik, Croatia, ~2h bus to Tivat with border crossing) + TGD (Podgorica, ~1.5h drive to Tivat).
 - **Sub-agent execution (mandatory)**: spawn one Agent per origin (≥2 origins triggers agents). Each agent runs `search_dates` for its O×D matrix in parallel, then `search_flights` on the most promising scout dates, INCLUDING one-way combinations.
-- **Sub-sub-agent execution (when needed)**: if any `search_flights` returns a token-limit-exceeded error, the Agent spawns a Bash+jq sub-sub-Agent to extract top-5 from the saved file. Test passes if at least one sub-sub-agent fires during this scenario (proves the recursive pattern works in practice — this scenario routinely produces oversized responses).
+- **Sub-sub-agent execution (when needed)**: if any `search_flights` returns a token-limit-exceeded error, the Agent spawns a Bash+jq sub-sub-Agent to extract top-5 from the saved file. Record the count. Zero sub-sub-agents is a valid pass when no overflow occurs (e.g., `MAX_MCP_OUTPUT_TOKENS=150000` succeeds in fitting all responses); pass-with-overflow requires every overflow to be handled by recursive extraction.
 - **Open-jaw evaluation**: each agent (or the main assistant during compile) must check whether mixing outbound origin/destination with return destination/origin from a different cluster member produces a cheaper trip than any same-airport pair.
 - `search_dates`: Each agent runs in parallel for its O×D pairs. Full target month, `is_round_trip=true`, `trip_duration=7` and `trip_duration=10` in parallel, `sort_by_price=true`. Also `is_round_trip=false` in both directions.
 - `search_flights`: On scout-best date, with carry_on=true. Run round-trip + one-way outbound + one-way return in parallel.
@@ -156,7 +156,7 @@ The skill should:
 - **Open-jaw won** (primary metric #3, NEW) — did mixing outbound/return airports beat any same-airport pair?
 - **One-way combination won** (primary metric #4) — did separate one-ways beat round-trip bundled?
 - **Sub-agents used** (primary metric #5) — count of Agents spawned (must be ≥2 for this scenario)
-- **Sub-sub-agents used** (primary metric #6, NEW) — count of recursive jq-slice agents spawned (target ≥1)
+- **Sub-sub-agents used** (primary metric #6, NEW) — count of recursive jq-slice agents spawned (expected >0 only when overflow is triggered; 0 is valid otherwise)
 - **Distinct origins/destinations searched** — count where at least one MCP call returned non-empty (primary metric #7)
 - **Total savings including connection cost** vs baseline
 
@@ -177,9 +177,9 @@ If a health check fails, mark that scenario as INCONCLUSIVE (MCP issue, not skil
 
 While running scenarios, watch for system messages saying "The following deferred tools are no longer available (their MCP server disconnected)". These indicate the tool-result truncation cascade fired. If they appear:
 
-- Confirm `MAX_MCP_OUTPUT_TOKENS` and `MCP_TOOL_TIMEOUT` are set in the host env (see Prerequisites). If not, the host is misconfigured — env-var guidance failed.
-- If env vars ARE set and disconnects still appear, that's a skill regression — Agents are returning raw blobs to main instead of summarizing first. Fail the scenario as a SKILL DISCIPLINE issue rather than INCONCLUSIVE.
-- If env vars are set AND Agents are summarizing properly AND disconnects still appear, that's an SDK/runtime issue — log the count and mark scenario PASS-WITH-WARNING.
+- Confirm `MAX_MCP_OUTPUT_TOKENS >= 150000` and `MCP_TOOL_TIMEOUT >= 120000` in the host env (see Prerequisites). Values below those thresholds — or unset — count as misconfigured (env-var guidance failed); a value like `MAX_MCP_OUTPUT_TOKENS=25000` is "set" but still useless.
+- If the recommended env values ARE met and disconnects still appear, that's a skill regression — Agents are returning raw blobs to main instead of summarizing first. Fail the scenario as a SKILL DISCIPLINE issue rather than INCONCLUSIVE.
+- If env values meet the thresholds AND Agents are summarizing properly AND disconnects still appear, that's an SDK/runtime issue — log the count and mark scenario PASS-WITH-WARNING.
 
 ## Output Format
 
@@ -221,7 +221,7 @@ One-way combo won: X/3 round-trip scenarios
 Open-jaw won: X/1 cluster scenarios (Scenario 5 only)
 Airport cluster won: X/1 cluster scenarios
 Sub-agents used: X/5 scenarios (expected for any scenario with 2+ viable origins)
-Sub-sub-agents used: X/5 scenarios (expected ≥1 in Scenario 5; pattern only fires on overflow)
+Sub-sub-agents used: X/5 scenarios (expected 0 when no overflow occurs; expected >0 only when overflow is triggered and must be handled recursively)
 MCP disconnects observed: X total (target = 0 with env vars set)
 Total distinct origins searched (skill-guided, across all scenarios): N
 Fallback strategy needed: X/5 scenarios
