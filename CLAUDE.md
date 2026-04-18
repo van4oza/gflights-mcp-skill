@@ -34,10 +34,10 @@ Once Desktop has extracted the zip (under `~/Library/Application Support/Claude/
 
 ## Sub-agent execution model
 
-The `/flights` skill uses a two-phase scout→detail architecture for broad searches:
+The `/flights` skill uses a three-phase scout → detail → compile architecture for broad searches:
 
 1. **Scout phase**: main assistant runs `search_dates` across all origin×destination pairs in parallel to build a price map and eliminate dead-end routes.
-2. **Detail phase**: when 3+ viable origins remain, one Agent is spawned per origin. Each agent gets scout intelligence (best dates, price levels) and searches `search_flights` with full details. For 1-2 origins, parallel tool calls are used directly without agents.
+2. **Detail phase**: when 2+ viable origins remain, one Agent is spawned per origin. Each agent gets scout intelligence (best dates, price levels) and searches `search_flights` with full details. For a single origin, direct parallel tool calls are used only when responses are expected to be modest; otherwise still wrap in one Agent to keep raw blobs out of the main thread.
 3. **Compile phase**: main assistant deduplicates results, adds connection costs, tags confidence levels, and ranks by true total cost.
 
 Both origin AND destination airports are clustered (nearby budget hubs, secondary airports, regional alternatives). The scout phase makes this matrix search cheap.

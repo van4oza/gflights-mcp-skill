@@ -94,7 +94,7 @@ Each Phase-2 agent **must NOT return**:
 
 When a single `search_flights` call returns a response that exceeds the host's per-tool-result ceiling, the SDK saves the full output to a file and surfaces an error like:
 
-```
+```text
 Error: result (124,676 characters) exceeds maximum allowed tokens. Output has been saved to /path/to/tool-results/<id>.txt
 ```
 
@@ -174,7 +174,7 @@ Only ask about what's missing from the user's message — don't re-ask what they
 
   **Escalation**: if all top-3 hubs return empty scout results for every destination, probe the next 2 ranked candidates before falling back to the stated origin alone.
 
-  When 3+ origin airports remain after ranking, use the two-phase execution model (see above): scout all pairs first with `search_dates`, then spawn detail agents only for viable origins.
+  When 2+ origin airports remain after ranking, use the three-phase execution model (see above): scout all pairs first with `search_dates`, then spawn one detail Agent per viable origin.
 
 - **Cluster destinations too, not just origins.** Apply the same logic to the destination side:
   - A city name → all airports serving that city and its metropolitan area (e.g. "London" → LHR, LGW, STN, LTN, SEN)
