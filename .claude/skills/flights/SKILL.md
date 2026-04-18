@@ -112,6 +112,20 @@ jq '[.flights[] | {price, legs: [.legs[] | {dep: .departure_airport, arr: .arriv
 
 **Don't fight the overflow** — embrace it. A `search_flights` that returns 124 KB and gets file-dumped is fine, as long as the agent immediately delegates filtering to a sub-sub-agent. The system was designed to support this.
 
+#### Architecture depth: when to nest deeper than 3 levels
+
+The default architecture is **3 levels**: main → Phase-2 per-origin Agents → Bash+jq sub-sub-Agents (only when overflow occurs). This handles the realistic distribution of `/flights` queries — multi-airport cluster searches with up to ~6 origins × ~6 destinations × multiple date windows.
+
+The architecture is **recursive without limit**. Add depth when:
+
+- **Per-destination sub-agents (level 4)** — when a single origin has 5+ destinations to search and the per-origin Agent's own context would fill from accumulated `search_flights` summaries. The Phase-2 Agent spawns one per-destination sub-agent.
+- **Per-date-window sub-agents (level 4-5)** — when a per-destination search spans multiple distinct date windows (e.g. duration sweep across 14/21/28-day trips), one sub-agent per window keeps each one's context tight.
+- **Per-airline-filter sub-sub-agents (level 5+)** — when a single date has 30+ candidate operators worth probing independently with their own airline filters. Rare but valid for exhaustive globe-scale searches.
+
+Each extra level costs one Agent spawn + return cycle of latency and tokens. Only add depth when a parent Agent's own context would otherwise overflow. **Parallelism within a level is almost always a bigger lever than depth** — 6 sibling Agents running simultaneously beat 3 Agents serially calling 2 children each.
+
+Heuristic for choosing depth: if a parent Agent's accumulated tool-result size threatens to approach `MAX_MCP_OUTPUT_TOKENS` (~600 KB), split that parent into per-child sub-agents. Otherwise keep the existing depth.
+
 ### Phase 3 — Compile and rank
 
 When all agents return:
