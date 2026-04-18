@@ -8,7 +8,7 @@ Type `/flights` in Claude Code and describe your trip. The skill will:
 
 - **Search broadly** across multiple airports for your city (e.g. JFK + EWR + LGA for "New York") in parallel
 - **Check nearby budget hubs** — automatically identifies low-cost carrier hubs within ~3 hours and searches them alongside your city (e.g. checking Barcelona when you're in Madrid)
-- **Use parallel sub-agents** for deep searches — when 3+ origin airports are involved, spawns one Agent per origin for true parallel execution without dropping airports
+- **Use parallel sub-agents** for deep searches — when 2+ origin airports are involved, spawns one Agent per origin for true parallel execution without dropping airports
 - **Find the cheapest dates** when you're flexible, then drill into the best options
 - **Normalize fares** by including bag costs, flagging basic economy traps, and warning about self-transfers
 - **Compare "Best" vs "Cheapest"** so you see the quality-price tradeoff
@@ -32,11 +32,22 @@ Claude will search SFO/OAK/SJC to NRT/HND across June, find the cheapest date wi
 - [fli](https://github.com/punitarani/fli) — the Google Flights MCP server
 - Python 3.10+ and [pipx](https://pipx.pypa.io/) (recommended for installing fli)
 
+### Env vars (strongly recommended)
+
+Broad `/flights` searches return 50-150 KB JSON blobs per call. The Claude Agent SDK's default per-tool-result ceiling (~25 K tokens) truncates these and intermittently flips MCP servers into a "disconnected" state until the next refresh. Add to your shell rc:
+
+```bash
+export MAX_MCP_OUTPUT_TOKENS=150000   # ~600 KB ceiling, fits broad search_flights blobs
+export MCP_TOOL_TIMEOUT=120000        # 2 min — Google Flights throttles slow responses
+```
+
+Restart your Claude Code / Cyrus session afterward. Without these, parallel fan-out from the skill will surface spurious disconnect notices and silent search failures.
+
 ## Quick Install
 
 ```bash
-git clone https://github.com/van4oza/gflights-mcp-skil.git
-cd gflights-mcp-skil
+git clone https://github.com/van4oza/gflights-mcp-skill.git
+cd gflights-mcp-skill
 ./install.sh
 ```
 
@@ -67,15 +78,15 @@ fli-mcp  # should start the MCP server on STDIO
 **Option A — Symlink (recommended, stays up to date):**
 
 ```bash
-git clone https://github.com/van4oza/gflights-mcp-skil.git
-ln -s "$(pwd)/gflights-mcp-skil/.claude/skills/flights" ~/.claude/skills/flights
+git clone https://github.com/van4oza/gflights-mcp-skill.git
+ln -s "$(pwd)/gflights-mcp-skill/.claude/skills/flights" ~/.claude/skills/flights
 ```
 
 **Option B — Copy:**
 
 ```bash
-git clone https://github.com/van4oza/gflights-mcp-skil.git
-cp -r gflights-mcp-skil/.claude/skills/flights ~/.claude/skills/flights
+git clone https://github.com/van4oza/gflights-mcp-skill.git
+cp -r gflights-mcp-skill/.claude/skills/flights ~/.claude/skills/flights
 ```
 
 ### 3. Configure the MCP server
@@ -116,7 +127,7 @@ Skills in `.claude/skills/` only work in Claude Code's terminal mode. To use the
 
 1. Open **Customize > Skills** in Claude Desktop
 2. Upload `dist/flights.skill`
-3. Re-run `./install.sh` — it auto-detects the extracted folder and replaces it with a symlink to `.claude/skills/flights`, so edits to the repo are live (any prior extraction is backed up under `~/.cache/gflights-mcp-skill/`).
+3. Re-run `./install.sh` — it auto-detects the extracted folder and replaces it with a symlink to `.claude/skills/flights`, so edits to the repo are live (any prior extraction is backed up under `~/.cache/gflights-mcp-skilll/`).
 
 If Claude Desktop ever re-extracts the zip on launch, re-run `./install.sh` to restore the symlink.
 
@@ -172,7 +183,7 @@ The skill combines two things:
 
 - **Search multiple airports**: The biggest savings lever. A $900 difference was reported just by checking alternate airports for the same city.
 - **Always check nearby budget hubs**: The skill uses LLM knowledge of airline geography to identify low-cost carrier hubs within ~3 hours of your city and searches them automatically. A cheap train + budget flight often beats an expensive direct flight.
-- **Parallel sub-agents for scale**: When 3+ origin airports need searching, the skill spawns one Agent per origin for true parallel execution. No airports get skipped under cognitive load.
+- **Parallel sub-agents for scale**: When 2+ origin airports need searching, the skill spawns one Agent per origin for true parallel execution. No airports get skipped under cognitive load.
 - **Use date flexibility before filtering**: Find the cheapest date window first, then apply airline/time/stop filters.
 - **Normalize with bags**: A "cheap" fare with no bags often costs more than a "pricier" fare that includes them. The skill uses bag-inclusive pricing.
 - **Compare Best vs Cheapest**: If the gap is small, pick the cleaner itinerary. If large, inspect what you're giving up (self-transfer, overnight layover, OTA booking).

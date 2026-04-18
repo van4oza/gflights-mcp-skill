@@ -34,10 +34,10 @@ Once Desktop has extracted the zip (under `~/Library/Application Support/Claude/
 
 ## Sub-agent execution model
 
-The `/flights` skill uses a two-phase scout→detail architecture for broad searches:
+The `/flights` skill uses a three-phase scout → detail → compile architecture for broad searches:
 
 1. **Scout phase**: main assistant runs `search_dates` across all origin×destination pairs in parallel to build a price map and eliminate dead-end routes.
-2. **Detail phase**: when 3+ viable origins remain, one Agent is spawned per origin. Each agent gets scout intelligence (best dates, price levels) and searches `search_flights` with full details. For 1-2 origins, parallel tool calls are used directly without agents.
+2. **Detail phase**: when 2+ viable origins remain, one Agent is spawned per origin. Each agent gets scout intelligence (best dates, price levels) and searches `search_flights` with full details. For a single origin, direct parallel tool calls are used only when responses are expected to be modest; otherwise still wrap in one Agent to keep raw blobs out of the main thread.
 3. **Compile phase**: main assistant deduplicates results, adds connection costs, tags confidence levels, and ranks by true total cost.
 
 Both origin AND destination airports are clustered (nearby budget hubs, secondary airports, regional alternatives). The scout phase makes this matrix search cheap.
@@ -46,6 +46,19 @@ Both origin AND destination airports are clustered (nearby budget hubs, secondar
 
 - `search_flights` with `return_date` sometimes returns empty for dates that `search_dates` confirmed. The flights skill has a 4-step fallback (strip bags → shift dates → one-way legs → present search_dates fare).
 - Bag filters (`carry_on`, `checked_bags`) can silently kill round-trip results. Retry without them if empty.
+
+## Required env vars (Cyrus / Claude Code hosts)
+
+`search_flights` returns 50-150 KB JSON blobs for broad queries. The Claude Agent SDK's default tool-result ceiling (~25 K tokens) truncates these and intermittently flips MCP servers into a "disconnected" state until the next refresh. Set these before launching Cyrus:
+
+```bash
+export MAX_MCP_OUTPUT_TOKENS=150000   # ~600 KB ceiling, headroom for broad search_flights blobs
+export MCP_TOOL_TIMEOUT=120000        # 2 min — Google Flights throttles slow responses
+```
+
+Add to `~/.zshrc` (or wherever you launch Cyrus from). Without these, parallel `search_flights` fan-out from the `/flights` skill will trigger spurious disconnect notices.
+
+**Why 150 K (not the 25 K default, not 200 K):** observed `search_flights` blobs peaked around 30-35 K tokens (~125 K characters) for the broadest matrix queries. 150 K leaves comfortable headroom (~5×) without inviting runaway responses to dominate the 1 M context. The skill itself routes large fan-outs through sub-agents and sub-sub-agents that filter/rank before returning, so the main thread rarely sees raw blobs even when the ceiling is high.
 
 ## Update workflow
 
