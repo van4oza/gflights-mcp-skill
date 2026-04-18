@@ -11,6 +11,15 @@ You are a test runner. Your job is to prove whether the `/flights` skill actuall
 
 The `flight-search` MCP server must be running (tools: `mcp__flight-search__search_dates`, `mcp__flight-search__search_flights`).
 
+Recommended env vars (set before launching Claude Code / Cyrus to avoid tool-result truncation and spurious MCP disconnects during broad scenarios):
+
+```bash
+export MAX_MCP_OUTPUT_TOKENS=150000
+export MCP_TOOL_TIMEOUT=120000
+```
+
+If env vars are not set, expect Scenarios 4-5 to occasionally need retries.
+
 ## Test Method
 
 For each scenario, run two searches:
@@ -26,7 +35,8 @@ How someone would use the MCP tools without the skill:
 ### Skill-guided (following /flights strategy)
 How the skill instructs searches:
 - Multiple origin and destination airports in parallel, including **airport cluster** cities reachable by train/bus/short flight (e.g. for Madrid, also check Barcelona and Valencia as budget airline hubs)
-- **Sub-agent execution**: When 3+ origin airports are identified, use the Agent tool to spawn one agent per origin airport. Each agent independently runs its searches and returns top results. For 1-2 origins, use parallel tool calls directly.
+- **Sub-agent execution**: When 2+ origin airports survive scouting, spawn one Agent per origin (lowered from previous "3+" threshold). Each agent independently runs `search_flights` and returns only top-ranked summaries — never raw JSON.
+- **Sub-sub-agent fallback**: If any single `search_flights` call inside an Agent returns a tool-result-too-large error (response saved to disk), the Agent should spawn a sub-sub-Agent that uses Bash+jq to extract the top 5 cheapest itineraries from the saved file. This validates the recursive delegation pattern documented in the skill.
 - `search_dates` first (with `sort_by_price: true`) to find cheapest date window, plus `search_dates` with `is_round_trip: false` in both directions for independent one-way date discovery
 - `search_flights` on the best 1-2 dates with smart defaults applied:
   - `carry_on: true` (always — normalizes pricing, filters basic economy on US domestic)
@@ -111,23 +121,44 @@ This scenario specifically tests the round-trip fallback strategy, multi-airport
 
 ---
 
-### Scenario 5: Madrid → Tivat, flexible month, round-trip 10 days
+### Scenario 5: Madrid → Tivat, flexible month, round-trip 7-10 days
 
-This scenario tests both the **airport cluster search** and the **one-way combination strategy**. Madrid (MAD) has limited budget service to Tivat, but Barcelona (BCN) — reachable by ~3h AVE train — is a major Vueling hub with cheap Tivat flights. The skill should discover BCN as an alternative origin. Two separate one-way tickets are also expected to beat the round-trip bundled fare.
+This scenario tests **airport cluster search**, **destination clustering**, **one-way combination strategy**, **open-jaw routing**, and the **sub-agent + sub-sub-agent depth** patterns. Verified findings (from VAN-112, April 2026):
+- MAD → TIV direct is essentially dead in spring (only €952+ available)
+- BCN → TIV exists at €29-38 via Vueling (Thu/Sat only) — outbound-only, no Vueling return
+- TIV → BCN return is €104+ via Air Serbia with Belgrade overnight
+- **Open-jaw winner**: BCN→TIV outbound (€29) + bus to Dubrovnik + DBV→MAD (€72 Iberia direct) = €101 flights, ~€151-171 door-to-door
+- Bus Tivat ↔ Dubrovnik is ~2h + Croatia/Montenegro border crossing
+
+The skill should:
+1. Cluster origins (MAD + BCN at minimum, ideally also VLC) and destinations (TIV + DBV + TGD).
+2. Discover that direct MAD→TIV is essentially unavailable.
+3. Discover that the open-jaw BCN-in / DBV-out beats every same-airport-both-ways option.
+4. Use sub-agents per origin to keep raw `search_flights` blobs out of main context.
+5. Use the sub-sub-agent + Bash+jq fallback when any single `search_flights` response overflows the token ceiling.
 
 **Baseline:**
 - `search_flights`: origin=MAD, destination=TIV, departure_date=[15th of target month], return_date=[+10 days], sort_by=CHEAPEST
 
 **Skill-guided:**
-- **Airport cluster**: Start with MAD→TIV, but also search nearby budget hubs reachable by train/bus: BCN→TIV, VLC→TIV. Also check nearby airports: GRO→TIV, REU→TIV.
-- **Sub-agent execution**: With 3+ origin airports (MAD, BCN, VLC, plus optionally GRO/REU), spawn one Agent per origin. Each agent independently runs `search_dates` and `search_flights` for its origin, including one-way combinations. This tests that the sub-agent model actually produces broader results than a single-threaded search.
-- `search_dates`: Each agent runs these in parallel for its pairs. Full target month, is_round_trip=true, trip_duration=10, sort_by_price=true. Also `search_dates` with `is_round_trip=false` in both directions.
-- Find cheapest date across all agents' results.
-- `search_flights`: Each agent searches its best date with return_date set, carry_on=true.
-- **One-way combination**: Each agent also runs one-way outbound + return searches on independently optimal dates.
-- **Compile**: Main assistant merges all agent results. Compare MAD direct fare vs BCN fare (+ ~€30 train), round-trip bundled vs combined one-way total.
+- **Origin cluster**: MAD (stated) + BCN (AVE ~2.5h, ~€30-50) + VLC (AVE ~1h40, ~€30).
+- **Destination cluster**: TIV (primary) + DBV (Dubrovnik, Croatia, ~2h bus to Tivat with border crossing) + TGD (Podgorica, ~1.5h drive to Tivat).
+- **Sub-agent execution (mandatory)**: spawn one Agent per origin (≥2 origins triggers agents). Each agent runs `search_dates` for its O×D matrix in parallel, then `search_flights` on the most promising scout dates, INCLUDING one-way combinations.
+- **Sub-sub-agent execution (when needed)**: if any `search_flights` returns a token-limit-exceeded error, the Agent spawns a Bash+jq sub-sub-Agent to extract top-5 from the saved file. Test passes if at least one sub-sub-agent fires during this scenario (proves the recursive pattern works in practice — this scenario routinely produces oversized responses).
+- **Open-jaw evaluation**: each agent (or the main assistant during compile) must check whether mixing outbound origin/destination with return destination/origin from a different cluster member produces a cheaper trip than any same-airport pair.
+- `search_dates`: Each agent runs in parallel for its O×D pairs. Full target month, `is_round_trip=true`, `trip_duration=7` and `trip_duration=10` in parallel, `sort_by_price=true`. Also `is_round_trip=false` in both directions.
+- `search_flights`: On scout-best date, with carry_on=true. Run round-trip + one-way outbound + one-way return in parallel.
+- **Compile**: Main assistant merges agent summaries (NOT raw blobs). Rank by true total cost (flights + ground transport). Compare MAD direct vs BCN+train vs open-jaw BCN/DBV.
 
-**Compare:** Price, **whether airport cluster search found a cheaper origin** (primary metric #1), **whether one-way combination beat the round-trip fare** (primary metric #2), **count of distinct origin airports actually searched** — the concrete validation that the sub-agent model didn't silently drop airports; count origins where at least one `search_dates` or `search_flights` call returned non-empty results (primary metric #3), total savings including connection cost.
+**Compare:**
+- **Price** (primary metric #1) — best total cost found
+- **Airport cluster won** (primary metric #2) — did an origin or destination outside the user's stated city win?
+- **Open-jaw won** (primary metric #3, NEW) — did mixing outbound/return airports beat any same-airport pair?
+- **One-way combination won** (primary metric #4) — did separate one-ways beat round-trip bundled?
+- **Sub-agents used** (primary metric #5) — count of Agents spawned (must be ≥2 for this scenario)
+- **Sub-sub-agents used** (primary metric #6, NEW) — count of recursive jq-slice agents spawned (target ≥1)
+- **Distinct origins/destinations searched** — count where at least one MCP call returned non-empty (primary metric #7)
+- **Total savings including connection cost** vs baseline
 
 ---
 
@@ -141,6 +172,14 @@ Before comparing, verify each MCP response:
 - Dates in response match the query
 
 If a health check fails, mark that scenario as INCONCLUSIVE (MCP issue, not skill issue).
+
+### MCP-disconnect resilience check (additional)
+
+While running scenarios, watch for system messages saying "The following deferred tools are no longer available (their MCP server disconnected)". These indicate the tool-result truncation cascade fired. If they appear:
+
+- Confirm `MAX_MCP_OUTPUT_TOKENS` and `MCP_TOOL_TIMEOUT` are set in the host env (see Prerequisites). If not, the host is misconfigured — env-var guidance failed.
+- If env vars ARE set and disconnects still appear, that's a skill regression — Agents are returning raw blobs to main instead of summarizing first. Fail the scenario as a SKILL DISCIPLINE issue rather than INCONCLUSIVE.
+- If env vars are set AND Agents are summarizing properly AND disconnects still appear, that's an SDK/runtime issue — log the count and mark scenario PASS-WITH-WARNING.
 
 ## Output Format
 
@@ -167,20 +206,23 @@ After all scenarios, output the summary:
 ```text
 === TEST SUMMARY ===
 
-| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Cluster? | Sub-agents? | Origins (base/skill) |
-|----------|----------|--------------|---------|--------------|-----------|-----------|----------|-------------|----------------------|
-| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | yes/no | 1/N |
-| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | yes/no | 1/N |
-| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | yes/no | 1/N |
-| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | yes/no | 1/N |
-| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes | 1/N |
+| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Open-jaw? | Cluster? | Sub-agents | Sub-sub-agents | Disconnects | Origins (base/skill) |
+|----------|----------|--------------|---------|--------------|-----------|-----------|-----------|----------|------------|----------------|-------------|----------------------|
+| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N |
+| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N |
+| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | N | 1/N |
+| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | N | 1/N |
+| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes/no | N | N | N | 1/N |
 
 Skill found better price: X/5 scenarios
 Alternate airport won: X/5 scenarios
 Alternate date won: X/5 scenarios
 One-way combo won: X/3 round-trip scenarios
+Open-jaw won: X/1 cluster scenarios (Scenario 5 only)
 Airport cluster won: X/1 cluster scenarios
-Sub-agents used: X/5 scenarios (expected for scenarios with 3+ origins)
+Sub-agents used: X/5 scenarios (expected for any scenario with 2+ viable origins)
+Sub-sub-agents used: X/5 scenarios (expected ≥1 in Scenario 5; pattern only fires on overflow)
+MCP disconnects observed: X total (target = 0 with env vars set)
 Total distinct origins searched (skill-guided, across all scenarios): N
 Fallback strategy needed: X/5 scenarios
 Average savings: $XX (XX%)

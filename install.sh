@@ -175,6 +175,26 @@ else
     echo "  will configure it automatically for any Claude Code session in this folder."
 fi
 
+# 5. Env-var nudge — strongly recommended for broad /flights searches
+echo ""
+echo "--- Env vars (strongly recommended) ---"
+ENV_MISSING=false
+if [ -z "$MAX_MCP_OUTPUT_TOKENS" ]; then ENV_MISSING=true; fi
+if [ -z "$MCP_TOOL_TIMEOUT" ]; then ENV_MISSING=true; fi
+
+if [ "$ENV_MISSING" = true ]; then
+    echo "[!!] Broad /flights searches return 50-150 KB JSON per call. The Claude Agent SDK's"
+    echo "     default per-tool-result ceiling (~25 K tokens) truncates these and intermittently"
+    echo "     flips MCP servers into a 'disconnected' state. Add to your ~/.zshrc (or shell rc):"
+    echo ""
+    echo '       export MAX_MCP_OUTPUT_TOKENS=150000   # ~600 KB ceiling'
+    echo '       export MCP_TOOL_TIMEOUT=120000        # 2 min'
+    echo ""
+    echo "     Then restart your Claude Code / Cyrus session."
+else
+    echo "[ok] MAX_MCP_OUTPUT_TOKENS and MCP_TOOL_TIMEOUT are set"
+fi
+
 echo ""
 echo "=== Done! ==="
 echo ""

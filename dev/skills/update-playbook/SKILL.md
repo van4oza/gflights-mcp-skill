@@ -102,6 +102,8 @@ Apply changes to both files:
 - Update smart defaults (carry_on, exclude_basic_economy, departure_window, emissions) if playbook findings change recommendations
 - Add new strategies discovered during research
 - Check for new round-trip API quirks or fallback patterns that need updating (the fli MCP sometimes returns empty results for valid round-trip date pairs — the skill has a fallback escalation for this)
+- **Verify the "Environment & Response Size" section is still accurate** — confirm the env vars (`MAX_MCP_OUTPUT_TOKENS`, `MCP_TOOL_TIMEOUT`) still match what the Claude Agent SDK reads (search the SDK source if version bumped). If the `flights` Python package gained a `max_results`/`compact` parameter (Step 1.5), update the skill to use it and consider lowering the recommended `MAX_MCP_OUTPUT_TOKENS` value.
+- **Verify the sub-agent and sub-sub-agent execution rules** still match the Claude Agent SDK's Agent tool semantics (Agent tool name, parallel-spawn syntax, return contract). If the SDK introduces a new way to handle oversized tool results (e.g. native chunking), update or replace the Bash+jq sub-sub-agent recipe.
 
 **Test skill (`dev/skills/test-flights/SKILL.md`):**
 - If airport mappings changed in the flight skill, update the test scenarios' airport pairs to match

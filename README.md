@@ -32,6 +32,17 @@ Claude will search SFO/OAK/SJC to NRT/HND across June, find the cheapest date wi
 - [fli](https://github.com/punitarani/fli) — the Google Flights MCP server
 - Python 3.10+ and [pipx](https://pipx.pypa.io/) (recommended for installing fli)
 
+### Env vars (strongly recommended)
+
+Broad `/flights` searches return 50-150 KB JSON blobs per call. The Claude Agent SDK's default per-tool-result ceiling (~25 K tokens) truncates these and intermittently flips MCP servers into a "disconnected" state until the next refresh. Add to your shell rc:
+
+```bash
+export MAX_MCP_OUTPUT_TOKENS=150000   # ~600 KB ceiling, fits broad search_flights blobs
+export MCP_TOOL_TIMEOUT=120000        # 2 min — Google Flights throttles slow responses
+```
+
+Restart your Claude Code / Cyrus session afterward. Without these, parallel fan-out from the skill will surface spurious disconnect notices and silent search failures.
+
 ## Quick Install
 
 ```bash
