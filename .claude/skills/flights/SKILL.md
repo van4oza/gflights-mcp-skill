@@ -32,6 +32,48 @@ The priors will sometimes be wrong (a "narrow" `search_flights` can still overfl
 
 Together these prevent the disconnect cascade and keep the main thread's context clean for ranking and presentation.
 
+## Resource Budgets (concurrency, depth, total spawn)
+
+Scaling the O×D matrix and adding recursive delegation can overwhelm the runtime. The Anthropic API Tier 4 caps at ~20 concurrent 100 K-context agents (2 M ITPM), sessions have crashed at 24 parallel sub-agents (GitHub anthropics/claude-code #25714), and the MCP server disconnects when ≥6 `search_flights` blobs hit `MAX_MCP_OUTPUT_TOKENS` simultaneously. These budgets are the hard contract that keeps all scale-related features (regional scouts, multi-modal WebFetch, open-jaw routing) safe.
+
+### Per-wave caps (max Agents spawned in one message)
+
+- **L2a Regional Scouts**: ≤8
+- **L2b Multi-Modal Scout**: 1 (may be concurrent with L2a; in-flight total ≤9 at that instant)
+- **L3 Detail Agents**: ≤12 per wave, up to 3 waves per query
+- **L4 jq Slicers**: ≤4 in-flight
+
+### Per-query totals
+
+- Total Agents spawned: **≤50**
+- Total `search_flights` calls: **≤200**
+- Total `search_dates` calls: **≤120**
+- Total `WebFetch` calls: **≤24**
+
+### Instantaneous concurrency ceiling
+
+Sum of in-flight Agents at any moment: **≤12**. This is the single most important number — if you are about to spawn a wave that would push the in-flight count above 12, shrink the wave first.
+
+### Wave sequencing contract (MANDATORY)
+
+1. **One wave = one message.** The main thread is the only spawner. Spawn all Agents for a wave in a single `Agent`-tool-call message.
+2. **Wait for ALL Agents to return** before issuing the next `Agent` message. Never overlap waves from the main thread.
+3. **On any error or MCP-disconnect signal**, the next wave shrinks by 50 % (round up) OR pauses one message for inspection. Never blindly retry at full width.
+
+### Preemptive shrink conditions
+
+- **Cold cache (first message in session)**: start at ≤6/wave; scale up only after a wave returns cleanly.
+- **Any `result exceeds maximum allowed tokens` observed in session**: cap subsequent L3 waves at 6 until a clean wave returns.
+- **Small query (O×D matrix ≤6 cells)**: skip Phase 1b, run classic v1 path (Phase 1a scout → single L3 wave → Phase 3 compile). Do NOT engage regional scouts or multi-modal agents.
+
+### Recursion constraint
+
+L3 Detail Agents **MUST NOT** spawn additional L3 Agents. The only permitted recursion from L3 is L3 → L4 (jq slicer) when a `search_flights` response overflows the token ceiling. Deeper per-destination / per-date-window nesting, where documented in the **Execution Model**, is L3's *internal* structure, not a new wave of L3 peers.
+
+### Applying the budgets
+
+Before spawning any wave, count what you're about to launch. If a wave would breach a per-wave cap or the instantaneous ceiling, split it into sequential waves (each still obeying the contract). The test-flights Scenario 6 enforces these numerics — any main-thread message that spawns >12 Agents, or a query that exceeds 50 total Agents, is a budget violation.
+
 ## Execution Model: Three-Phase Search with Hierarchical Agents
 
 Use a **scout → detail → compile** architecture. The scout phase is cheap and fast (small responses, main thread). The detail phase delegates large-response work to Agents so the main thread never sees raw blobs. The compile phase ranks and presents the filtered summaries.
@@ -289,6 +331,7 @@ Based on the results, proactively advise the user:
 5. **Google Flights is the discovery layer; the airline checkout is the source of truth.** Always remind users to verify final details.
 6. **Never drop confirmed fares.** If `search_dates` returned a price, always present it prominently — even if `search_flights` can't break it into individual legs. Label it as a confirmed round-trip fare and direct the user to Google Flights to book it.
 7. **Always compare one-way combinations for round trips.** Run one-way outbound + return searches in parallel with every round-trip search. Budget airlines frequently price separate one-ways cheaper than bundled round-trips.
+8. **Budget-bound concurrency.** Never launch more than 12 Agents in one message. Waves are the contract; use the **Resource Budgets** at the top of this file as the hard limit. Shrink preemptively on cold cache, on overflow signals, and on any MCP-disconnect.
 
 ## Error Handling
 

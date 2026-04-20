@@ -60,6 +60,10 @@ Add to `~/.zshrc` (or wherever you launch Cyrus from). Without these, parallel `
 
 **Why 150 K (not the 25 K default, not 200 K):** observed `search_flights` blobs peaked around 30-35 K tokens (~125 K characters) for the broadest matrix queries. 150 K leaves comfortable headroom (~5×) without inviting runaway responses to dominate the 1 M context. The skill itself routes large fan-outs through sub-agents and sub-sub-agents that filter/rank before returning, so the main thread rarely sees raw blobs even when the ceiling is high.
 
+## Scale-related work must cite the Resource Budgets
+
+Any change that widens the O×D matrix, adds a new wave (regional scouts, multi-modal WebFetch, open-jaw routing), or raises recursion depth MUST reference the **`## Resource Budgets`** section in `.claude/skills/flights/SKILL.md` and stay within its per-wave (≤12 L3 Agents), per-query (≤50 total Agents), and instantaneous-concurrency (≤12 in-flight) limits. The budget exists because Tier 4 caps ~20 concurrent 100 K-context agents, sessions crash at 24 parallel sub-agents (anthropics/claude-code #25714), and MCP disconnects cascade at ≥6 simultaneous oversized `search_flights` responses. PRs that add spawn-sites without citing the budget will be bounced in review.
+
 ## Update workflow
 
 `/update-playbook` researches the web and updates the playbook, flights skill, AND test-flights scenarios together — keep all three in sync when making changes manually too.
