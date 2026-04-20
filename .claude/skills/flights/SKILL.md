@@ -34,9 +34,9 @@ Together these prevent the disconnect cascade and keep the main thread's context
 
 ## Execution Model: Three-Phase Search with Hierarchical Agents
 
-Use a **scout → detail → compile** architecture. The scout phase is cheap and fast (small responses, main thread). The detail phase delegates large-response work to Agents so the main thread never sees raw blobs. The compile phase ranks and presents the filtered summaries.
+Use a **scout → detail → compile** architecture. The scout phase is cheap and fast (small `search_dates` responses) and comes in two variants: **Phase 1a** runs directly on the main thread for narrow searches, while **Phase 1b** distributes the scout across per-region sub-Agents for broad cross-regional searches that would otherwise saturate the main thread. The detail phase delegates large-response `search_flights` work to Agents so the main thread never sees raw blobs. The compile phase ranks and presents the filtered summaries.
 
-### Phase 1 — Scout (main assistant, parallel `search_dates` only)
+### Phase 1a — Narrow Scout (main assistant, parallel `search_dates` only)
 
 Before spawning any detail agents, run `search_dates` across **all origin×destination pairs** in one parallel burst. `search_dates` returns ~1-3 KB so it's safe to fan out broadly here. This builds a quick price map showing:
 - Which pairs have service at all (many speculative hubs won't)
@@ -57,6 +57,69 @@ For flexible dates, run both round-trip and one-way `search_dates` scouts in bot
 - You have strong reason to believe the response will be small (specific airline filter, NON_STOP, narrow date)
 
 Anything else goes through Phase 2 agents.
+
+### Phase 1b — Regional Scout Wave (for broad cross-regional searches)
+
+Phase 1b is a **scale lever** — a wave-based scout tier that expands the hub cap from 3 to 8+ without flooding the main thread with 48+ simultaneous `search_dates` calls. It activates automatically for broad, cross-regional queries and is otherwise skipped.
+
+**When to engage.** Phase 1b activates when ANY of these hold:
+
+- Origin cluster has 8+ candidate airports (e.g. after lifting the top-3 hubs cap for a broad search)
+- Destination cluster has 6+ candidate airports (e.g. "anywhere in SE Asia" clustered into SIN, BKK, DMK, HKG, KUL, CGK)
+- The search spans 2+ geographic regions on the origin side, the destination side, or both (typical user phrasings: "anywhere in Europe → anywhere in SE Asia", "US East Coast → Japan")
+
+If none of the above hold, **skip Phase 1b** and use Phase 1a's direct main-thread fan-out — even matrices in the 7-12 pair range (e.g. Madrid→Tivat style 3 Iberian origins × 3 Balkans destinations = 9 pairs) fit comfortably on the main thread when both clusters sit inside a single region each, because nothing saturates concurrent MCP load at that scale. Phase 1b is optional; Phase 1a is the baseline.
+
+**Why wave-based.** A main-thread `search_dates` fan-out of 48+ parallel calls (8 origins × 6 destinations, multiplied by trip-duration sweeps) saturates the MCP server and bloats main context — each response is small but the aggregate plus concurrent contention is not. Bundling each region's fan-out inside its own sub-Agent keeps per-Agent concurrency bounded while the Agents themselves still run in parallel, letting us explore a much wider matrix without blowing the instantaneous tool-call budget.
+
+**Step 1 — cluster origins and destinations into regions.** Pick only regions containing at least one plausible origin or destination for this query. Illustrative region list (Agents may add airports per geographic knowledge as needed):
+
+- **Iberia**: MAD, BCN, VLC, AGP, LIS, OPO
+- **Central-Europe**: FRA, MUC, VIE, PRG, BUD, ZRH
+- **British-Isles**: LHR, LGW, STN, LTN, MAN, EDI, DUB
+- **Balkans/SE-Europe**: TIV, DBV, TGD, SOF, BEG, SKG, ATH
+- **Nordics/Baltic**: CPH, ARN, OSL, HEL, RIX, TLL
+- **NA-East**: JFK, EWR, LGA, BOS, YYZ, YUL, IAD
+- **NA-West**: LAX, SFO, SEA, YVR, SAN
+- **East-Asia**: NRT, HND, ICN, GMP, PEK, PKX, PVG
+- **SE-Asia**: SIN, BKK, DMK, HKG, KUL, CGK
+- **South-Asia**: BOM, DEL, MAA, BLR, HYD
+
+**Step 2 — spawn one Regional Scout Agent per relevant region, in a single parallel message.** Cap the number of scouts at **≤12** (practical concurrency ceiling for Opus 4.7 Tier 4).
+
+Each Regional Scout Agent's spawn prompt must include:
+
+- Its assigned region name and full airport list
+- The destination cluster — or, when the destination region sits inside the scout's own region, the other region's name and list so the scout knows its target side
+- The user's flexible date range and trip-length range
+- **Resource budget**: up to 24 parallel `search_dates` calls inside the scout (typically 6 airports × 4 destinations batched with the trip-duration sweep)
+- The mandatory return contract (below)
+
+**Regional Scout's task** (executed inside the one Agent):
+
+1. Launch parallel `search_dates` for every (airport_in_region × destination) pair in a single message — typically 6×4=24 parallel calls.
+2. Include BOTH `is_round_trip: true` and `is_round_trip: false` (in each direction) so one-way discovery is baked in.
+3. Trip-length sweep: `trip_duration: [14, 21, 28]` in parallel when the user gave a range.
+4. Drop pairs with zero service. Rank surviving pairs by price and return the **top 3-5 O×D pairs** for this region.
+
+**Regional Scout return contract (MANDATORY — compact markdown table only):**
+
+| origin | destination | direction | best_date | duration_days | price_EUR | confidence |
+| -- | -- | -- | -- | -- | -- | -- |
+
+Plus a one-line summary, e.g.: `Region: Iberia — 18 pairs scanned, 11 with service, cheapest MAD→SOF €39 RT on 2026-05-14`.
+
+The scout **must NOT return** raw `search_dates` JSON, per-pair result dumps, or verbose airport descriptions — only the ranked table and the summary line. `confidence` is `indicative` for `search_dates`-derived fares; Phase 2 upgrades to `confirmed` after `search_flights` resolution.
+
+**Step 3 — main-thread aggregation.** Read all scout returns, pick the global **top-8 O×D pairs by `price_EUR`** across regions, and silently drop regions with zero-service pairs. Advance those 8 pairs to Phase 2 (one detail Agent per surviving origin, just as before).
+
+**Concurrency budget.**
+
+- Regional scouts spawned in parallel: **≤12** (fits inside Opus 4.7 Tier 4 realistic concurrency)
+- Total Agents spawned across Phase 1b + Phase 2 for one query: **≤50** (covers 8+ hubs × 6+ destinations end-to-end)
+- Each scout Agent's internal fan-out: **≤24** parallel `search_dates` calls
+
+**Fallback.** If every Regional Scout returns zero-service pairs, fall back to Phase 1a's main-thread fan-out against the user's stated origin alone and surface the dead-end to the user.
 
 ### Phase 2 — Detail (one Agent per viable origin)
 
@@ -170,9 +233,9 @@ Only ask about what's missing from the user's message — don't re-ask what they
 
   **How to apply this**: For every search, identify candidate budget airline hubs within ~3 hours of the user's origin by fast surface transport or short connecting flight. Use your knowledge of airline geography — you know which cities are major bases for Ryanair, easyJet, Wizz Air, Vueling, Norwegian, Pegasus, AirAsia, IndiGo, and other low-cost carriers relevant to the route.
 
-  **Rank and cap**: score each candidate by `(relevant LCC presence on this destination) × (schedule frequency) × (low transport friction from the user's city: time + cost)` and take the **top 3 hubs** alongside the user's stated origin. Search the top 3; don't fan out further unless they all come back empty. This keeps the origin×destination×search-type matrix bounded — the scout phase is only cheap when capped, and over-spawning reintroduces the same tool-call-limit risk that dropped airports in the first place. Within the cap, don't second-guess whether a hub "makes sense"; let prices decide.
+  **Rank and cap**: score each candidate by `(relevant LCC presence on this destination) × (schedule frequency) × (low transport friction from the user's city: time + cost)` and take the **top 3 hubs** alongside the user's stated origin for narrow searches handled by Phase 1a's main-thread scout, or the **top 8 hubs** when Phase 1b's Regional Scout Wave is engaged (see **Execution Model** above for the exact Phase 1b gates — 8+ origin airports, 6+ destination airports, or 2+ geographic regions on one side of the trip). Search that capped set; don't fan out further unless they all come back empty. This keeps the origin×destination×search-type matrix bounded — the scout phase is only cheap when capped, and over-spawning reintroduces the same tool-call-limit risk that dropped airports in the first place. Within the cap, don't second-guess whether a hub "makes sense"; let prices decide.
 
-  **Escalation**: if all top-3 hubs return empty scout results for every destination, probe the next 2 ranked candidates before falling back to the stated origin alone.
+  **Escalation**: if all capped hubs return empty scout results for every destination, probe the next 2 ranked candidates before falling back to the stated origin alone.
 
   When 2+ origin airports remain after ranking, use the three-phase execution model (see above): scout all pairs first with `search_dates`, then spawn one detail Agent per viable origin.
 

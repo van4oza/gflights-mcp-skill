@@ -36,7 +36,7 @@ Once Desktop has extracted the zip (under `~/Library/Application Support/Claude/
 
 The `/flights` skill uses a three-phase scout → detail → compile architecture for broad searches:
 
-1. **Scout phase**: main assistant runs `search_dates` across all origin×destination pairs in parallel to build a price map and eliminate dead-end routes.
+1. **Scout phase**: main assistant runs `search_dates` across all origin×destination pairs to build a price map and eliminate dead-end routes. Split into two tiers: **Phase 1a (Narrow Scout)** fans out directly from the main thread for narrow matrices; **Phase 1b (Regional Scout Wave)** spawns one sub-Agent per geographic region for broad cross-regional searches (8+ origins, 6+ destinations, or origins/destinations spanning 2+ regions), lifting the hub cap from 3 to 8+ without saturating the main thread.
 2. **Detail phase**: when 2+ viable origins remain, one Agent is spawned per origin. Each agent gets scout intelligence (best dates, price levels) and searches `search_flights` with full details. For a single origin, direct parallel tool calls are used only when responses are expected to be modest; otherwise still wrap in one Agent to keep raw blobs out of the main thread.
 3. **Compile phase**: main assistant deduplicates results, adds connection costs, tags confidence levels, and ranks by true total cost.
 

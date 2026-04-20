@@ -54,7 +54,7 @@ Then compare:
 
 ## Test Scenarios
 
-Run all 5 scenarios. Use dates approximately 6-8 weeks from today to ensure availability. Record the exact dates used at the top of the output so results are reproducible.
+Run all 6 scenarios. Use dates approximately 6-8 weeks from today to ensure availability. Record the exact dates used at the top of the output so results are reproducible.
 
 ---
 
@@ -162,6 +162,33 @@ The skill should:
 
 ---
 
+### Scenario 6: Europe → SE Asia, flexible 3-week trip (wave-scaling regression check)
+
+This scenario validates **Phase 1b Regional Scout Wave** engagement for broad cross-regional searches. The matrix (5 European hubs × 4 SE-Asian destinations = 20 O×D pairs, spanning 3 European regions × 1 Asian region) far exceeds the ≤6-pair threshold, so Phase 1b **must** engage.
+
+**Baseline:**
+- `search_flights`: origin=LHR, destination=SIN, departure_date=[15th of target month], return_date=[+21 days], sort_by=CHEAPEST
+
+**Skill-guided:**
+- **Origin cluster (cross-regional)**: MAD, BCN (Iberia) + FRA, AMS (Central-Europe) + LGW (British-Isles) — 5 European hubs spanning 3 regions.
+- **Destination cluster**: SIN, BKK, KUL, CGK (4 SE-Asian hubs). 5×4 = 20 pairs → triggers Phase 1b via the "2+ regions on origin side" gate.
+- **Phase 1b engagement (mandatory)**: main assistant detects the matrix exceeds 6 pairs and spawns **≥2 Regional Scout Agents** in parallel — one per European region containing an origin (Iberia scout, Central-Europe scout, British-Isles scout = 3 scouts in this example).
+- Each Regional Scout runs `search_dates` for its region's airport list × the 4 SE-Asian destinations, with `is_round_trip=true`, `is_round_trip=false` in both directions, and trip_duration sweeps of [14, 21, 28]. Returns a compact markdown table ranking its top 3-5 O×D pairs plus a one-line summary — NEVER raw JSON.
+- Main assistant aggregates scout returns, picks the **global top-8 O×D pairs by price**, and advances to Phase 2 (one detail Agent per surviving origin) with carry_on=true.
+- **Concurrency telemetry (mandatory)**: record `regional_scouts_spawned` (≥2 expected), `max_concurrent_agents` across Phase 1b + Phase 2 (≤12 expected), and `total_spawned` end-to-end for the query (≤50 expected).
+- **Small-query regression signal**: none of the Phase 1b gates fire for Scenarios 1-5 (Scenarios 1-2 have 6-pair matrices, Scenarios 3-4 are 3-4 pairs, and Scenario 5's 9-pair Iberia→Balkans matrix is single-origin-region × single-destination-region so the "2+ regions on one side" gate doesn't trigger either). Report `phase_1b_engaged: no` for Scenarios 1-5 and `yes` for Scenario 6. This doubles as the acceptance check for `/flights JFK → LHR, flexible month`-style narrow queries — Scenario 1 is the structural equivalent (3 NYC origins × 2 London destinations = 6 pairs, all within NA-East and British-Isles single-region clusters).
+
+**Compare (primary metrics):**
+- **Price** — best total cost found vs baseline (must beat single-airport baseline on price)
+- **phase_1b_engaged** — must be `yes` for this scenario, `no` for Scenarios 1-5
+- **regional_scouts_spawned** — count of Regional Scout Agents spawned in parallel; must be ≥2
+- **max_concurrent_agents** — highest simultaneous Agent count across Phase 1b + Phase 2; must be ≤12
+- **total_spawned** — total Agents spawned end-to-end for the query; must be ≤50
+- **Winning origin region** — which European region did the cheapest O×D pair come from? (information, not pass/fail)
+- **Airport cluster won** — did a non-stated origin or destination win?
+
+---
+
 ## Health Checks
 
 Before comparing, verify each MCP response:
@@ -198,7 +225,7 @@ SKILL-GUIDED (multi-airport + date flex + bags):
   Origins searched: N (count of origins where at least one call returned non-empty results)
   Dates scanned: [date range]
 
-DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no] | One-way combo cheaper: [yes/no/N/A] | Airport cluster won: [yes/no/N/A] | Sub-agents used: [yes/no] | Origins searched (baseline/skill): 1/N
+DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no] | One-way combo cheaper: [yes/no/N/A] | Airport cluster won: [yes/no/N/A] | Sub-agents used: [yes/no] | Phase 1b engaged: [yes/no] | Regional scouts: N | Max concurrent agents: N | Total spawned: N | Origins searched (baseline/skill): 1/N
 ```
 
 After all scenarios, output the summary:
@@ -206,25 +233,30 @@ After all scenarios, output the summary:
 ```text
 === TEST SUMMARY ===
 
-| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Open-jaw? | Cluster? | Sub-agents | Sub-sub-agents | Disconnects | Origins (base/skill) |
-|----------|----------|--------------|---------|--------------|-----------|-----------|-----------|----------|------------|----------------|-------------|----------------------|
-| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N |
-| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N |
-| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | N | 1/N |
-| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | N | 1/N |
-| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes/no | N | N | N | 1/N |
+| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Open-jaw? | Cluster? | Sub-agents | Sub-sub-agents | Phase 1b? | Regional scouts | Max concurrent | Total spawned | Disconnects | Origins (base/skill) |
+|----------|----------|--------------|---------|--------------|-----------|-----------|-----------|----------|------------|----------------|-----------|-----------------|----------------|---------------|-------------|----------------------|
+| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | no | 0 | N | N | N | 1/N |
+| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | no | 0 | N | N | N | 1/N |
+| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | no | 0 | N | N | N | 1/N |
+| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | no | 0 | N | N | N | 1/N |
+| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes/no | N | N | no | 0 | N | N | N | 1/N |
+| 6. EUR→SEA | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | yes/no | N | N | yes | N (≥2) | N (≤12) | N (≤50) | N | 1/N |
 
-Skill found better price: X/5 scenarios
-Alternate airport won: X/5 scenarios
-Alternate date won: X/5 scenarios
-One-way combo won: X/3 round-trip scenarios
+Skill found better price: X/6 scenarios
+Alternate airport won: X/6 scenarios
+Alternate date won: X/6 scenarios
+One-way combo won: X/4 round-trip scenarios
 Open-jaw won: X/1 cluster scenarios (Scenario 5 only)
-Airport cluster won: X/1 cluster scenarios
-Sub-agents used: X/5 scenarios (expected for any scenario with 2+ viable origins)
-Sub-sub-agents used: X/5 scenarios (expected 0 when no overflow occurs; expected >0 only when overflow is triggered and must be handled recursively)
+Airport cluster won: X/2 cluster scenarios (Scenarios 5 and 6)
+Sub-agents used: X/6 scenarios (expected for any scenario with 2+ viable origins)
+Sub-sub-agents used: X/6 scenarios (expected 0 when no overflow occurs; expected >0 only when overflow is triggered and must be handled recursively)
+Phase 1b engaged: X/1 scenarios (Scenario 6 only — expected yes; Scenarios 1-5 must all be no as the small-query regression check)
+Regional scouts spawned (Scenario 6): N (target ≥2)
+Max concurrent agents (Scenario 6): N (target ≤12)
+Total Agents spawned (Scenario 6): N (target ≤50)
 MCP disconnects observed: X total (target = 0 with env vars set)
 Total distinct origins searched (skill-guided, across all scenarios): N
-Fallback strategy needed: X/5 scenarios
+Fallback strategy needed: X/6 scenarios
 Average savings: $XX (XX%)
 
 VERDICT: [PASS — skill adds clear value / MIXED — skill helps sometimes / FAIL — skill doesn't improve results]
