@@ -126,12 +126,79 @@ Each extra level costs one Agent spawn + return cycle of latency and tokens. Onl
 
 Heuristic for choosing depth: if a parent Agent's accumulated tool-result size threatens to approach `MAX_MCP_OUTPUT_TOKENS` (~600 KB), split that parent into per-child sub-agents. Otherwise keep the existing depth.
 
+### Phase 2b — Multi-Modal Ground-Transport Enrichment
+
+Runs as **one Agent** concurrently with the Phase 2 detail-agent wave (the sequencing is Main → Phase 1 → [Phase 2 + Phase 2b] → Phase 3). Phase 2b uses `WebFetch`, not the `flight-search` MCP, so it creates zero contention with `search_flights`.
+
+**Why this exists.** Ground-transport numbers baked into prompts ("AVE Madrid-Barcelona ~€30") are snapshots from model training and drift silently — Renfe AVE actual fare band is €30-80 by demand, FlixBus varies €15-35 by season, ferries (Jadrolinija, Grimaldi, Baltic services) may not be represented in training data at all. When the open-jaw ranking in Phase 3 has to decide whether a mixed-airport itinerary beats a same-airport round-trip, it needs **live** ground-transport prices with confidence tags — not model estimates baked into prose.
+
+#### Edge inventory (computed by main thread)
+
+Before spawning the Phase 2b Agent, the main thread enumerates every ground-transport edge the candidate matrix requires:
+
+- For every surviving origin hub: `user_home_city → origin_hub` (deduplicated by origin_hub)
+- For every destination airport: `destination_airport → final_destination_city`
+- For open-jaw evaluation: every pair of destination airports in different cities/regions within the destination cluster (e.g. `TIV → DBV`, `BGY → MXP`, `STN → LHR`)
+
+Typical edge count: **4-10 per query**. Pass the list to the Phase 2b Agent as an explicit edge table so it knows exactly what to resolve — do not ask the agent to re-discover the edge inventory from flight results.
+
+#### Fetch strategy (4 tiers, fall through on failure)
+
+All WebFetches within the Phase 2b Agent launch in a **single message** (full parallelism).
+
+1. **Rome2Rio (primary, broadest coverage).** `WebFetch https://www.rome2rio.com/map/<from_city>/<to_city>` — aggregates train/bus/flight/ferry across Europe, North America, and most of Asia. The parsing prompt must extract per-mode rows: `mode`, `operator`, `price_EUR`, `duration_hours`, `transfer_count`. Rome2Rio is publicly crawlable and covers most routes even when a national rail site doesn't.
+
+2. **FlixBus (secondary for bus-specific, when Rome2Rio sparse).** `WebFetch https://www.flixbus.com/search?departureCity=<city>&arrivalCity=<city>&rideDate=<date>` — structured tiles. Use when Rome2Rio returns no bus row or when a specific European coach segment needs a fresher price.
+
+3. **Regional / ferry providers (tertiary for specific routes, only when tiers 1-2 are sparse).** Pick the provider by geography:
+   - **Direct Ferries** (`https://www.directferries.com`) — aggregator for Mediterranean / Baltic / UK-Ireland / Greek-islands.
+   - **Jadrolinija** (`https://www.jadrolinija.hr`) — Adriatic (Croatia-Italy, Croatia domestic).
+   - **Grimaldi Lines** (`https://www.grimaldi-lines.com`) — Italy-Spain, Italy-Greece, Italy-Tunisia.
+   - **Viking / Tallink / Silja** — Baltic / Nordic services.
+   - **SNAV / GNV / Blue Star Ferries** — Italy-Greece, Greek islands.
+   - **Trainline EU/UK** (`https://www.thetrainline.com`) — rail fallback when Rome2Rio can't resolve operator.
+   - **National rail homepages** (Renfe, SNCF, Trenitalia, DB) — **try LAST**. Most are cookie/session-gated and will reject WebFetch; fall through to Rome2Rio which aggregates their pricing.
+
+4. **Knowledge-based fallback (last resort).** If all three live tiers fail for an edge, the Agent uses geographic knowledge to estimate and tags the row `confidence: estimated`. This preserves v1 behavior as a clean fallback rather than silently blocking the edge.
+
+If **every** tier including the fallback estimate fails for a given edge, tag the row `confidence: unavailable` — Phase 3 will drop that edge (and any itinerary that depends on it) from open-jaw enumeration rather than silently assuming zero cost.
+
+#### Phase 2b return contract (MANDATORY)
+
+The Agent returns **one markdown table, nothing else** — no prose, no raw WebFetch dumps. The table must use these exact columns:
+
+| from | to | mode | operator | duration_h | price_EUR | confidence | source |
+
+`confidence` values (in priority order): `confirmed-live` | `estimated` | `unavailable`.
+
+Example rows:
+
+| from | to | mode | operator | duration_h | price_EUR | confidence | source |
+| ---- | -- | ---- | -------- | ---------- | --------- | ---------- | ------ |
+| MAD | BCN | train | AVE (Renfe) | 2.5 | 35 | confirmed-live | rome2rio |
+| TIV | DBV | bus | FlixBus | 2.2 | 14 | confirmed-live | rome2rio |
+| SPU | ANC | ferry | Jadrolinija | 10.0 | 55 | confirmed-live | jadrolinija |
+| BCN | MAD | train | AVE | 2.5 | 35 | mirrored | — |
+| DBV | MXP | — | — | — | — | unavailable | rome2rio |
+
+`mirrored` is shorthand: when a symmetric edge (e.g. `MAD → BCN` and `BCN → MAD`) has identical operator/mode/pricing both ways, fetch once and mirror the row. The `source` stays `—` on the mirrored row; the other row carries the live source.
+
+The Agent **must NOT return**: raw WebFetch HTML/markdown blobs, per-source narrative commentary, or any rows without the full column set. Partial data is always worse than an `unavailable` tag.
+
+#### Failure-mode tolerance
+
+- **Per-edge failure:** the edge gets `confidence: unavailable`. Phase 3 drops any open-jaw itinerary that requires that edge, but same-airport round-trips are unaffected (they don't consume the failed edge).
+- **Whole-Agent failure (error, timeout, empty table):** Phase 3 falls back to v1 knowledge-based estimates inline and tags every ground cost `confidence: estimated`. Open-jaw promotion threshold then ratchets from 15% → 20% savings before an open-jaw can beat a matched-pair round-trip as the headline recommendation.
+- **WebFetch quota pressure:** edges ≤24 per query is the working cap. If the edge inventory exceeds that, drop the least-consequential inter-destination edges first (same destination country, short distance) — never drop `user_home → origin_hub` or `destination_airport → final_city` edges, which are always load-bearing.
+
 ### Phase 3 — Compile and rank
 
 When all agents return:
 
 1. **Deduplicate** — multiple agents may find the same flight via different search paths. Dedup key per leg is `airline_code + flight_number + departure_date`; for multi-leg itineraries, concatenate leg keys with `|`. When two entries share the key but carry different connection prefixes from different origin clusters (e.g. Madrid→BCN→TIV vs starting-at-BCN→TIV), keep both — they represent different trips and should be labeled distinctly. When deduplicating genuine duplicates, keep the entry with the most detail (layover airport, terminal, aircraft) and the lower confirmed price.
-2. **Calculate true totals** — for hub-origin results, add connection cost (train/bus/flight to hub). For one-way combinations, sum outbound + return.
+2. **Calculate true totals** — for hub-origin results, add connection cost (train/bus/flight to hub) from the **Phase 2b ground-transport table**. For one-way combinations, sum outbound + return. Every ground segment displayed to the user must carry the Phase 2b `confidence` tag (`confirmed-live` | `estimated` | `unavailable`) next to its price; never paraphrase an `estimated` fare as if it were confirmed. If a same-airport itinerary's required edge is `unavailable`, keep the itinerary but flag the segment `TBD — check operator site`; if an **open-jaw** itinerary's required inter-destination edge is `unavailable`, drop it entirely rather than showing a door-to-door total that's missing a leg.
+
+   *Open-jaw headline promotion* (full algorithm in VAN-118 §3a Step D) consumes this same Phase 2b table. When Phase 2b returned a clean table, the open-jaw promotion threshold is 15% savings over the best matched-pair round-trip; when Phase 2b was unavailable / fell back to knowledge estimates (every edge tagged `estimated`), the threshold ratchets to 20% before an open-jaw can displace the matched-pair as the top recommendation.
 3. **Tag confidence** — label each result: "confirmed fare (flight search)" for results from `search_flights`, or "indicative fare (date search)" for prices only found via `search_dates`.
 4. **Resolve tag conflicts** — when scout and detail both produced fares for the same route-date, the detail fare wins (flight-level accuracy beats date-level estimate), even if the scout fare is lower. If detail couldn't resolve the itinerary at all, present the scout fare with the "indicative" tag and direct the user to book via Google Flights with those exact dates (see **Round-Trip Fallback Strategy** below).
 5. **Rank by true total cost** — sort all options across all origins by actual total the user would pay, including connection costs. Break ties by confidence (confirmed > indicative), then by fewer stops, then by shorter total travel time.
