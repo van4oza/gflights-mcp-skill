@@ -54,7 +54,9 @@ Then compare:
 
 ## Test Scenarios
 
-Run all 5 scenarios. Use dates approximately 6-8 weeks from today to ensure availability. Record the exact dates used at the top of the output so results are reproducible.
+Run all 6 scenarios. Use dates approximately 6-8 weeks from today to ensure availability. Record the exact dates used at the top of the output so results are reproducible.
+
+**Scenario 6 (wave-scaling regression)** specifically validates the Resource Budgets contract from `/flights` SKILL.md — it's the only scenario where budget telemetry is the primary pass/fail signal. Scenarios 1-5 still record the telemetry columns (`waves`, `total_agents`, `max_concurrent`) so regressions are visible even when they're not the headline.
 
 ---
 
@@ -162,6 +164,45 @@ The skill should:
 
 ---
 
+### Scenario 6: Wave-scaling regression — 8-hub European matrix, flexible month
+
+This scenario exists to assert the **Resource Budgets** contract (see `/flights` SKILL.md `## Resource Budgets`). Its purpose is NOT price discovery — it's to prove that broad-matrix `/flights` invocations respect the per-wave and per-query caps and do not trigger MCP disconnect cascades.
+
+**Setup:**
+- Origin cluster (8 hubs): MAD, BCN, VLC, LIS, OPO, TLS, MRS, CDG.
+- Destination cluster (6 airports): TIV, DBV, TGD, SJJ, SPU, ZAD.
+- Full target month, round-trip, `trip_duration=[7, 10, 14]`.
+- Invoke via `/flights` so the skill's sub-agent machinery engages end-to-end.
+
+**Baseline:** (present for parity; not the focus)
+- Single naive `search_flights`: MAD→TIV on the 15th of the target month. Record price only.
+
+**Skill-guided:** run the full three-phase architecture. Because the matrix has 48 cells, the skill MUST engage Phase 1b (regional scouts). Expected wave shape under the budget:
+
+- Phase 1a scout: main-thread `search_dates` fan-out (not Agents — no cap applies except the per-query `search_dates` total of 120).
+- Phase 1b regional scout wave: ≤8 L2a Agents + optionally 1 L2b multi-modal Agent (in-flight ≤9).
+- Phase 2 detail waves: ≤12 L3 Agents per wave, up to 3 waves. Between waves, ALL L3 Agents must return before the next wave starts.
+- Phase 2 overflow handling: ≤4 L4 jq slicers in flight at any moment, only spawned from inside an L3 Agent when a `search_flights` blob overflows.
+
+**Budget assertions (primary pass/fail):**
+1. `max_concurrent_agents` (sum of in-flight Agents at any observed instant, across all waves) ≤ **12**.
+2. `total_agents` (cumulative Agents spawned across the whole query) ≤ **50**.
+3. No main-thread message spawned >12 Agents.
+4. `waves` (distinct main-thread `Agent`-message rounds) ≤ **3** for L3, ≤ **1** for L2a/L2b.
+5. `MCP disconnects observed` = **0**.
+6. No L3 Agent spawned another L3 Agent (only L3 → L4 is permitted).
+7. On any single `result exceeds maximum allowed tokens` observed in the session, the next L3 wave shrank to ≤6.
+
+**Small-query regression (same scenario, second pass):**
+Re-invoke `/flights` with a minimal query — `JFK → LHR, flexible month` — and confirm the skill takes the classic v1 path (Phase 1a → single L3 wave → Phase 3). Expected telemetry: `waves ≤ 1`, `total_agents ≤ 3`, Phase 1b **not** engaged. If the skill fires Phase 1b on a 1×1 query, that's a budget-discipline regression (preemptive-shrink condition ignored).
+
+**Compare:**
+- Price parity is informational only; scale safety is the headline.
+- If any budget assertion fails, mark scenario **FAIL** even if the price is good.
+- If all budget assertions pass AND the small-query regression passes, mark scenario **PASS — budget contract upheld**.
+
+---
+
 ## Health Checks
 
 Before comparing, verify each MCP response:
@@ -199,35 +240,51 @@ SKILL-GUIDED (multi-airport + date flex + bags):
   Dates scanned: [date range]
 
 DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no] | One-way combo cheaper: [yes/no/N/A] | Airport cluster won: [yes/no/N/A] | Sub-agents used: [yes/no] | Origins searched (baseline/skill): 1/N
+
+BUDGET TELEMETRY:
+  waves: N | total_agents: N | max_concurrent: N | MCP disconnects: N
 ```
+
+**Budget telemetry definitions:**
+- `waves`: distinct main-thread messages that spawned ≥1 `Agent` tool call (L3 detail waves count; L2a/L2b counts once each).
+- `total_agents`: cumulative Agents spawned across the whole query (L2a + L2b + L3 + L4).
+- `max_concurrent`: peak in-flight Agent count at any observed instant.
+- `MCP disconnects`: count of "deferred tools are no longer available" system messages during the scenario.
 
 After all scenarios, output the summary:
 
 ```text
 === TEST SUMMARY ===
 
-| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Open-jaw? | Cluster? | Sub-agents | Sub-sub-agents | Disconnects | Origins (base/skill) |
-|----------|----------|--------------|---------|--------------|-----------|-----------|-----------|----------|------------|----------------|-------------|----------------------|
-| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N |
-| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N |
-| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | N | 1/N |
-| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | N | 1/N |
-| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes/no | N | N | N | 1/N |
+| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Open-jaw? | Cluster? | Sub-agents | Sub-sub-agents | Disconnects | Origins (base/skill) | Waves | Total agents | Max concurrent |
+|----------|----------|--------------|---------|--------------|-----------|-----------|-----------|----------|------------|----------------|-------------|----------------------|-------|--------------|----------------|
+| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N | N | N | N |
+| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N | N | N | N |
+| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | N | 1/N | N | N | N |
+| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | N | 1/N | N | N | N |
+| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes/no | N | N | N | 1/N | N | N | N |
+| 6. Budget regression | $XXX | $XXX | n/a | yes/no | yes/no | n/a | n/a | yes/no | N | N | N | 1/N | N | N | N |
 
-Skill found better price: X/5 scenarios
+Skill found better price: X/5 scenarios (Scenario 6 excluded — budget contract is its pass/fail signal)
 Alternate airport won: X/5 scenarios
 Alternate date won: X/5 scenarios
 One-way combo won: X/3 round-trip scenarios
 Open-jaw won: X/1 cluster scenarios (Scenario 5 only)
 Airport cluster won: X/1 cluster scenarios
-Sub-agents used: X/5 scenarios (expected for any scenario with 2+ viable origins)
-Sub-sub-agents used: X/5 scenarios (expected 0 when no overflow occurs; expected >0 only when overflow is triggered and must be handled recursively)
+Sub-agents used: X/6 scenarios (expected for any scenario with 2+ viable origins)
+Sub-sub-agents used: X/6 scenarios (expected 0 when no overflow occurs; expected >0 only when overflow is triggered and must be handled recursively)
 MCP disconnects observed: X total (target = 0 with env vars set)
 Total distinct origins searched (skill-guided, across all scenarios): N
 Fallback strategy needed: X/5 scenarios
-Average savings: $XX (XX%)
+Average savings: $XX (XX%) across Scenarios 1-5
 
-VERDICT: [PASS — skill adds clear value / MIXED — skill helps sometimes / FAIL — skill doesn't improve results]
+BUDGET CONTRACT (Scenario 6 + cross-scenario telemetry):
+Max main-thread wave size across all scenarios: N (must be ≤12 — violation = FAIL)
+Max per-query total agents across all scenarios: N (must be ≤50 — violation = FAIL)
+Max concurrent agents observed across all scenarios: N (must be ≤12 — violation = FAIL)
+Scenario 6 small-query regression: PASS / FAIL (classic v1 path on 1×1 query?)
+
+VERDICT: [PASS — skill adds clear value + budget contract upheld / MIXED — skill helps sometimes / FAIL — skill doesn't improve results OR budget contract violated]
 ```
 
 ## Execution Guidelines
