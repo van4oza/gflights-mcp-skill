@@ -52,6 +52,19 @@ For flexible dates, run both round-trip and one-way `search_dates` scouts in bot
 
 **Duration sweep for flexible trip lengths**: when the user gives a trip-length range (e.g. "2–4 weeks"), include multiple `trip_duration` values in the scout burst — e.g. 14, 21, 28 in parallel per pair. Duration is often a bigger savings lever than specific dates: a 3-week trip can be €100+ cheaper than 2 weeks on the same route. Pick the winning duration per origin from scout results before detail agents drill in.
 
+#### Dead-route classification (after scout, before spawning detail agents)
+
+Once all scout tool calls return, classify each origin×destination pair as `dead` or `live`:
+
+- **`dead`** when EITHER condition holds:
+  - Fewer than 3 date candidates came back in the scout window (a thin schedule signals no real seasonal service), OR
+  - The cheapest scout fare for this pair is ≥5× the cheapest scout fare any *other* origin produced for the *same* destination (one outlier price on an otherwise well-served destination signals a dead-end routing — e.g. MAD→TIV at €952 while BCN→TIV scouts at €38)
+- **`live`** otherwise
+
+**Do NOT spawn a Phase-2 detail agent for a dead pair.** Skipping them keeps agent budget on routes that actually have service, and prevents €900+ outliers from leaking into the recommendation table. In the final compile (Phase 3), surface each dead pair in a single summary line — e.g. "MAD→TIV: tried, no real service this season (€952 outlier, skipped)" — rather than ranking it alongside live options.
+
+When every pair for a given destination is classified dead, report that destination as unreachable from the scouted origin set rather than silently dropping it.
+
 **Do NOT call `search_flights` directly from the main thread for broad queries.** Direct main-thread `search_flights` is acceptable only when:
 - Exactly one origin × one destination × one date set remains after scouting, AND
 - You have strong reason to believe the response will be small (specific airline filter, NON_STOP, narrow date)
@@ -77,12 +90,30 @@ Anything else goes through Phase 2 agents.
 
 **Launch ALL agents in a single message** — they run in parallel, keeping added wall-clock time small.
 
+#### Asymmetric LCC detection (inside each Phase-2 Agent)
+
+Low-cost carriers often run seasonal one-way service that looks like a steal from the scout map but strands the traveler with no matching return. The canonical example: Vueling sells BCN→TIV at €29-38 in spring but flies **zero** TIV→BCN return flights in the same window. A cheap outbound with no return is a worse deal than it appears, and the agent must surface that risk before the main thread ranks it.
+
+**Rule.** Whenever the Agent identifies a cheap LCC outbound where `price < 50% × route_median` (a rough threshold — the Agent computes the median from the fares it just obtained for that origin/destination/date-band), it MUST:
+
+1. Immediately probe `search_flights` for the **same airline** in the **return direction** across a ±2-week window centered on the chosen return date (or the user's target return month if dates are flexible).
+2. If the probe returns **zero results**, tag the outbound in the return payload as:
+   ```
+   asymmetric — no <airline> return across ±2w; plan return separately or consider open-jaw
+   ```
+3. If the probe returns results, record the cheapest return fare alongside the outbound so the main thread can form a proper one-way pair.
+
+Launch the return-direction probe in the **same parallel batch** as the Agent's other `search_flights` calls — don't wait for outbound results first. The cost is one extra tool call per cheap-LCC candidate; the benefit is that the main thread never ranks a stranding outbound without the warning attached.
+
+Flag the asymmetric outbound even if it would otherwise win on price. The main thread will still evaluate it (an asymmetric outbound paired with a different carrier's return, or an open-jaw via a different destination airport, can still be the best total), but the user must see the asymmetry before picking it.
+
 #### Agent return contract (MANDATORY)
 
 Each Phase-2 agent **must return only**:
 - Top 3-5 cheapest itineraries per (route, search-type) pair, formatted as compact rows: `price, airlines+flight numbers, departure→arrival time, stops, duration, notable warnings`
 - A one-line summary per origin (e.g. "BCN→TIV: 21 itineraries scanned, cheapest €142 round-trip Vueling+Air Serbia")
 - Confidence tags ("confirmed via search_flights" or "indicative via search_dates")
+- **Asymmetric-LCC tags** when the return-direction probe (above) returned empty, e.g. `asymmetric — no Vueling return across ±2w` — attach these to the specific outbound leg they apply to, never aggregate them into a footnote
 
 Each Phase-2 agent **must NOT return**:
 - Raw `search_flights` JSON blobs
@@ -132,6 +163,50 @@ When all agents return:
 
 1. **Deduplicate** — multiple agents may find the same flight via different search paths. Dedup key per leg is `airline_code + flight_number + departure_date`; for multi-leg itineraries, concatenate leg keys with `|`. When two entries share the key but carry different connection prefixes from different origin clusters (e.g. Madrid→BCN→TIV vs starting-at-BCN→TIV), keep both — they represent different trips and should be labeled distinctly. When deduplicating genuine duplicates, keep the entry with the most detail (layover airport, terminal, aircraft) and the lower confirmed price.
 2. **Calculate true totals** — for hub-origin results, add connection cost (train/bus/flight to hub). For one-way combinations, sum outbound + return.
+2b. **Cross-cluster open-jaw combination (mandatory whenever the search covered 2+ origins OR 2+ destinations).** Same-airport round-trips and one-way pairs are not the only bundle to consider — an outbound landing at destination_j paired with a return leaving from a different destination_k (or arriving at a different origin_l than the outbound departed from) can beat every matched-pair option once ground-transport cost is added. A live example from the VAN-112 retrospective: `BCN→TIV outbound (€29 Vueling) + DBV→MAD return (€72 Iberia) + Tivat↔Dubrovnik bus (~€25) = ~€185 door-to-door`, vs €414 for the best matched-pair option. Evaluate open-jaws systematically:
+
+   **Step A — Gather cheapest one-way legs per direction from the L3 detail-agent returns.**
+   - `OB[i][j]` = cheapest one-way outbound from origin_i to destination_j on the scout-identified best dates
+   - `RT[k][l]` = cheapest one-way return from destination_k back to origin_l on the scout-identified best dates
+
+   Never fabricate missing cells. If an Agent didn't return a one-way for a direction, skip that cell — don't synthesize it from scout data, don't extrapolate from round-trip bundles.
+
+   **Step B — Enumerate open-jaw candidates** where `outbound_dest ≠ return_origin` AND/OR `return_dest ≠ outbound_origin`. For each `(i, j, k, l)` compute:
+
+   ```
+   open_jaw_total = OB[i][j].price + RT[k][l].price
+                  + ground_cost(user_home → origin_i)
+                  + ground_cost(destination_j → destination_k)  // 0 when j == k
+                  + ground_cost(origin_l → user_home)
+   ```
+
+   Ground costs come from a future Phase 2b Multi-Modal enrichment layer (tracked as a sibling issue). Until Phase 2b ships, fall back to model-estimated ground costs — use knowledge of regional transport (high-speed rail, intercity bus, ferry, short hop flights) and tag every ground edge with `confidence: "estimated"`. Skip any candidate where a ground edge is missing AND the two endpoints are in different countries (too risky without verified routing).
+
+   **Step C — Rank alongside matched-pair options.** Winner = lowest door-to-door total across three candidate types:
+   - Best matched-pair round-trip bundle (from step 2)
+   - Best matched-pair one-way combo (from step 2)
+   - Best open-jaw combination (from Step B)
+
+   **Step D — Surface threshold (critical — prevents false positives on weak ground estimates).** Promote an open-jaw as the **HEADLINE recommendation** ONLY when ALL three hold:
+   - `open_jaw_total ≤ 0.85 × best_matched_pair_total` (≥15% savings)
+   - Every ground segment used has `confidence ≥ "indicative"` from Phase 2b
+   - Cumulative ground-transit time ≤ 6 hours
+
+   When Phase 2b is unavailable and ground costs fall back to `confidence: "estimated"` only, **ratchet the savings threshold from 15% to 20%** before promoting. Below the applicable threshold, mention the open-jaw as "also consider" but never promote above the matched-pair winner.
+
+   **Step E — Tie-breaking** when two open-jaws land within 2% of each other:
+   1. Fewer total bookings (one-ticket > two-tickets > four-tickets)
+   2. Better ground confidence (`confirmed-live` > `indicative` > `estimated`)
+   3. Fewer international border crossings on ground legs
+   4. Shorter total ground-transit time
+
+   **Step F — Confidence tag (MUST be displayed with the price in the final output, never hidden, never abbreviated away):**
+
+   ```
+   [open-jaw | flights: confirmed | ground: <confirmed-live via Rome2Rio | indicative | estimated> | net savings €X (Y%) vs RT]
+   ```
+
+   The tag is the user's only signal that the headline number assumes successful ground connections. A promoted open-jaw without the tag is a bug; fix it before presenting results.
 3. **Tag confidence** — label each result: "confirmed fare (flight search)" for results from `search_flights`, or "indicative fare (date search)" for prices only found via `search_dates`.
 4. **Resolve tag conflicts** — when scout and detail both produced fares for the same route-date, the detail fare wins (flight-level accuracy beats date-level estimate), even if the scout fare is lower. If detail couldn't resolve the itinerary at all, present the scout fare with the "indicative" tag and direct the user to book via Google Flights with those exact dates (see **Round-Trip Fallback Strategy** below).
 5. **Rank by true total cost** — sort all options across all origins by actual total the user would pay, including connection costs. Break ties by confidence (confirmed > indicative), then by fewer stops, then by shorter total travel time.
