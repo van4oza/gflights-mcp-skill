@@ -54,7 +54,7 @@ Then compare:
 
 ## Test Scenarios
 
-Run all 5 scenarios. Use dates approximately 6-8 weeks from today to ensure availability. Record the exact dates used at the top of the output so results are reproducible.
+Run all 6 scenarios. Use dates approximately 6-8 weeks from today to ensure availability. Record the exact dates used at the top of the output so results are reproducible.
 
 ---
 
@@ -162,6 +162,49 @@ The skill should:
 
 ---
 
+### Scenario 6: Warsaw → Tallinn, multi-modal ground-transport fallback
+
+This scenario tests **Phase 2b Multi-Modal Ground-Transport Enrichment**. Warsaw → Tallinn is a route where direct flights are sparse and expensive but train/bus/ferry via Riga is a credible alternative — exactly the case where Phase 2b's live ground-transport fetches (Rome2Rio / FlixBus / Tallink / LUX Express / Ecolines) make the open-jaw ranking defensible instead of hand-estimate baked. The scenario runs in **two sub-runs**: a normal live-fetch run, and a simulated-failure fallback run.
+
+**Baseline:**
+- `search_flights`: origin=WAW, destination=TLL, departure_date=[15th of target month], return_date=[+7 days], sort_by=CHEAPEST
+- Note cheapest flight-only price. No ground transport considered.
+
+**Skill-guided — Sub-run 6a (live fetch):**
+- **Origin cluster**: WAW + WMI (Warsaw Modlin, Ryanair/Wizz hub ~40 min from city centre).
+- **Destination cluster**: TLL (primary) + HEL (Helsinki — 2h ferry from Tallinn, opens an open-jaw option: fly to/from HEL, ferry to/from TLL).
+- **Phase 2 flight wave**: one Agent per origin (WAW, WMI), standard parallel `search_dates` + `search_flights` pipeline.
+- **Phase 2b Agent (mandatory, launched in parallel with the Phase 2 wave)**. Main thread computes the edge inventory up-front:
+  - `WAW → RIX` (Riga — common rail/bus transit to the Baltics)
+  - `RIX → TLL`
+  - `WAW → TLL` (direct coach, overnight)
+  - `TLL → HEL` (ferry, open-jaw enabler)
+  - `user_home_WAW → WAW` (mirrored / 0-cost — user IS in Warsaw)
+  - `TLL → final_city_TLL` (mirrored / 0-cost)
+  - **Fetch order**: Rome2Rio → FlixBus → Direct Ferries + Tallink + LUX Express → knowledge-based fallback.
+- **Compile**: Phase 3 joins the Phase 2b table against each candidate itinerary. Open-jaw promoted if door-to-door savings ≥ 15% over the best same-airport round-trip AND every ground edge carries `confidence ≥ indicative`.
+
+**Skill-guided — Sub-run 6b (simulated WebFetch failure):**
+Re-run the same scenario, but instruct the Phase 2b Agent that WebFetch is unavailable (the Agent should return an empty table OR tag every edge `confidence: estimated`). Expected Phase 3 behavior:
+- No crash; output still ranks flight + ground combinations.
+- Every ground-transport row carries `confidence: estimated` (not `confirmed-live`).
+- Open-jaw promotion threshold ratchets from 15% → 20% savings before an open-jaw can displace the matched-pair round-trip as the headline.
+- The ratchet must be **explicit in the rationale** the skill surfaces (e.g. "open-jaw savings 12% < 20% threshold — demoted to alternative, not headline").
+
+**Compare:**
+- **Phase 2b confirmed-live count** (primary metric #8, NEW): sub-run 6a must produce ≥1 edge with `confidence: confirmed-live` from a **non-flight source** (Rome2Rio, FlixBus, Tallink, LUX Express, Direct Ferries, etc.).
+- **Multi-modal sources used** (primary metric #9, NEW): distinct live sources hit during sub-run 6a — feeds the `multi_modal_sources_used` summary column.
+- **Fallback behavior** (primary metric #10, NEW): sub-run 6b must (a) not crash, (b) emit only `estimated`/`unavailable` confidence tags, (c) explicitly acknowledge the 20% ratchet in any open-jaw decision it makes.
+- **No silent poisoning**: any edge that failed all 4 fetch tiers (live + knowledge fallback) must carry `unavailable`, and any open-jaw itinerary that requires it must be dropped — never silently zero'd.
+- **Door-to-door vs baseline**: is the multi-modal total cheaper than the flight-only baseline?
+
+**Pass conditions:**
+1. Sub-run 6a: `multi_modal_sources_used ≥ 1`; ≥1 `confirmed-live` tag on a non-flight row.
+2. Sub-run 6b: no crash; every ground row tagged `estimated`; 20% ratchet acknowledged in output.
+3. Across both sub-runs: zero `unavailable` edges silently consumed by any itinerary presented to the user.
+
+---
+
 ## Health Checks
 
 Before comparing, verify each MCP response:
@@ -198,7 +241,7 @@ SKILL-GUIDED (multi-airport + date flex + bags):
   Origins searched: N (count of origins where at least one call returned non-empty results)
   Dates scanned: [date range]
 
-DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no] | One-way combo cheaper: [yes/no/N/A] | Airport cluster won: [yes/no/N/A] | Sub-agents used: [yes/no] | Origins searched (baseline/skill): 1/N
+DELTA: Skill saved $XX (XX%) | Alt airport: [yes/no] | Alt date: [yes/no] | Smart defaults changed result: [yes/no] | One-way combo cheaper: [yes/no/N/A] | Airport cluster won: [yes/no/N/A] | Sub-agents used: [yes/no] | Multi-modal sources used: [N/A or count] | Origins searched (baseline/skill): 1/N
 ```
 
 After all scenarios, output the summary:
@@ -206,25 +249,29 @@ After all scenarios, output the summary:
 ```text
 === TEST SUMMARY ===
 
-| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Open-jaw? | Cluster? | Sub-agents | Sub-sub-agents | Disconnects | Origins (base/skill) |
-|----------|----------|--------------|---------|--------------|-----------|-----------|-----------|----------|------------|----------------|-------------|----------------------|
-| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N |
-| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N |
-| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | N | 1/N |
-| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N | N | N | 1/N |
-| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes/no | N | N | N | 1/N |
+| Scenario | Baseline | Skill-guided | Savings | Alt airport? | Alt date? | OW combo? | Open-jaw? | Cluster? | Multi-modal sources | Sub-agents | Sub-sub-agents | Disconnects | Origins (base/skill) |
+|----------|----------|--------------|---------|--------------|-----------|-----------|-----------|----------|---------------------|------------|----------------|-------------|----------------------|
+| 1. NYC→LON | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N/A | N | N | N | 1/N |
+| 2. LA→TYO | $XXX | $XXX | $XX (X%) | yes/no | yes/no | N/A | N/A | N/A | N/A | N | N | N | 1/N |
+| 3. CHI→PAR | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N |
+| 4. MAD→MOW | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | N/A | N/A | N/A | N | N | N | 1/N |
+| 5. MAD→TIV | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes/no | N/A | N | N | N | 1/N |
+| 6a. WAW→TLL (live) | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no | yes/no | N sources | N | N | N | 1/N |
+| 6b. WAW→TLL (simulated WebFetch failure) | $XXX | $XXX | $XX (X%) | yes/no | yes/no | yes/no | yes/no (20% threshold) | yes/no | 0 (fallback) | N | N | N | 1/N |
 
-Skill found better price: X/5 scenarios
-Alternate airport won: X/5 scenarios
-Alternate date won: X/5 scenarios
-One-way combo won: X/3 round-trip scenarios
-Open-jaw won: X/1 cluster scenarios (Scenario 5 only)
-Airport cluster won: X/1 cluster scenarios
-Sub-agents used: X/5 scenarios (expected for any scenario with 2+ viable origins)
-Sub-sub-agents used: X/5 scenarios (expected 0 when no overflow occurs; expected >0 only when overflow is triggered and must be handled recursively)
+Skill found better price: X/6 scenarios (6 treated as its more-informative sub-run for headline, typically 6a)
+Alternate airport won: X/6 scenarios
+Alternate date won: X/6 scenarios
+One-way combo won: X/4 round-trip scenarios
+Open-jaw won: X/2 cluster scenarios (Scenarios 5 and 6)
+Airport cluster won: X/2 cluster scenarios
+Multi-modal sources used (distinct live sources across 6a): N (expected ≥1 for sub-run 6a; 0 for 6b by design)
+Phase 2b fallback behavior correct: yes/no (sub-run 6b must degrade gracefully — no crash, `estimated` tags, 20% ratchet acknowledged)
+Sub-agents used: X/6 scenarios (expected for any scenario with 2+ viable origins)
+Sub-sub-agents used: X/6 scenarios (expected 0 when no overflow occurs; expected >0 only when overflow is triggered and must be handled recursively)
 MCP disconnects observed: X total (target = 0 with env vars set)
 Total distinct origins searched (skill-guided, across all scenarios): N
-Fallback strategy needed: X/5 scenarios
+Fallback strategy needed: X/6 scenarios
 Average savings: $XX (XX%)
 
 VERDICT: [PASS — skill adds clear value / MIXED — skill helps sometimes / FAIL — skill doesn't improve results]
